@@ -15,6 +15,8 @@ class LlamaServerManager:
     def __init__(self, log_callback=None):
         self.server_process = None
         self.server_running = False
+        self.host = "127.0.0.1"
+        self.port = 8080
         self.log_callback = log_callback
 
     def log(self, message):
@@ -80,6 +82,10 @@ class LlamaServerManager:
         if not os.path.exists(model_path):
             self.log(f"Model dosyası bulunamadı: {model_path}")
             return False
+
+        # Port ve host'u kaydet (HTTP API çağrıları için)
+        self.port = port
+        self.host = "127.0.0.1"
 
         llama_server_cmd = self.find_llama_server()
 
@@ -155,13 +161,25 @@ class LlamaServerManager:
             self.log("Sunucu zaten durmuş.")
             return
 
+        # 1. Önce HTTP API üzerinden nazikçe kapatmayı dene (llama-server /exit endpoint)
+        try:
+            import requests
+            url = f"http://{self.host}:{self.port}/exit"
+            self.log(f"🛑 HTTP API ile kapatma isteği gönderiliyor: {url}")
+            requests.post(url, timeout=2)
+            self.log("✓ HTTP API kapatma isteği başarıyla gönderildi.")
+        except ImportError:
+            self.log("⚠ requests kütüphanesi bulunamadı, HTTP API kapatma atlanıyor.")
+        except Exception:
+            pass
+
+        # 2. Süreç grubunu temizle
         self.cleanup_server_process()
         self.server_running = False
 
-        # Son çare: sistemdeki tüm llama-server süreçlerini zorla sonlandır
+        # 3. Son çare: sistemdeki tüm llama-server süreçlerini zorla sonlandır
         try:
             os.system("killall -9 llama-server 2>/dev/null")
-            self.log("🔫 Tüm llama-server süreçleri zorla sonlandırıldı.")
         except Exception:
             pass
 
