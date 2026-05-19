@@ -1,0 +1,16 @@
+# Sanal ortam
+llama_tray_venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Config (kullanıcıya özel)
+*.local
