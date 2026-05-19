@@ -1,6 +1,6 @@
 pkgname=llamatray-git
 pkgver=1.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc="PyQt6 based Llama.cpp Tray Manager for Linux"
 arch=('any')
 url="https://github.com/DolbyDAX2/LlamaTray"
@@ -17,7 +17,7 @@ package() {
 
     # Sistemin global olarak çalıştırabilmesi için /usr/bin altına başlatıcı symlink ekle
     install -d "${pkgdir}/usr/bin"
-    echo -e '#!/bin/bash\npython /opt/LlamaTray/LlamaTray/main.py "$@"' > "${pkgdir}/usr/bin/LlamaTray"
+    echo -e '#!/bin/bash\ncd /opt/LlamaTray && python -m LlamaTray.main "$@"' > "${pkgdir}/usr/bin/LlamaTray"
     chmod +x "${pkgdir}/usr/bin/LlamaTray"
 
     # Masaüstü kısayolunu menüye yerleştir
