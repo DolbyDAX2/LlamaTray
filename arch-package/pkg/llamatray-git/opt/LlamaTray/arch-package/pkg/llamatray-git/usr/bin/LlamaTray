@@ -1,0 +1,9 @@
+#!/bin/bash
+# Python kapandığında veya kesildiğinde çalışacak temizlik fonksiyonu
+cleanup() {
+    killall -9 llama-server 2>/dev/null
+}
+trap cleanup EXIT
+
+cd /opt/LlamaTray
+python -m LlamaTray.main "$@"
