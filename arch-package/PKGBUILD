@@ -3,11 +3,11 @@ pkgver=1.0.0
 pkgrel=1
 pkgdesc="PyQt6 based Llama.cpp Tray Manager for Linux"
 arch=('any')
-url="https://gitea.fatihdurdu.xyz"
+url="https://github.com/DolbyDAX2/LlamaTray"
 license=('MIT')
 depends=('python' 'python-pyqt6' 'python-psutil')
 optdepends=('nvidia-ml-py: NVIDIA GPU monitoring support')
-source=("git+https://gitea.fatihdurdu.xyz/fatih/LlamaTray.git" "LlamaTray.desktop")
+source=("git+https://gitea.fatihdurdu.xyz/dolbydax2/LlamaTray.git" "LlamaTray.desktop")
 md5sums=('SKIP' 'SKIP')
 
 package() {
