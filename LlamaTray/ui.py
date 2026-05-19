@@ -172,6 +172,13 @@ class LlamaTray(QSystemTrayIcon):
         self.window.setWindowTitle("LlamaTray")
         self.window.setGeometry(100, 100, 450, 650)
 
+        # Pencere kapatıldığında (X butonu) sunucuyu otomatik durdur
+        original_close_event = self.window.closeEvent
+        def window_close_event(event):
+            self.stop_server()
+            original_close_event(event)
+        self.window.closeEvent = window_close_event
+
         # Pencere ikonu
         self.window.setWindowIcon(self.default_icon)
 
