@@ -3,12 +3,12 @@
 pkgname = llamatray-git
 pkgbase = llamatray-git
 xdata = pkgtype=pkg
-pkgver = 1.0.0-9
+pkgver = 1.0.0-12
 pkgdesc = PyQt6 based Llama.cpp Tray Manager for Linux
 url = https://github.com/DolbyDAX2/LlamaTray
-builddate = 1779171990
+builddate = 1779194459
 packager = Unknown Packager
-size = 4241967
+size = 8942531
 arch = any
 license = MIT
 depend = python

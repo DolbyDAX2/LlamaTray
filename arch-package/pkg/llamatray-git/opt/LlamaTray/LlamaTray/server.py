@@ -7,22 +7,35 @@ import os
 import subprocess
 import shlex
 import signal
+from PyQt6.QtCore import QProcess, QProcessEnvironment
 
 
-class LlamaServerManager:
+class LlamaServerManager(QProcess):
     """Llama-server sürecini yöneten sınıf"""
 
     def __init__(self, log_callback=None):
-        self.server_process = None
+        super().__init__()
         self.server_running = False
         self.host = "127.0.0.1"
         self.port = 8080
         self.log_callback = log_callback
+        
+        # QProcess ayarları
+        self.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        self.readyReadStandardOutput.connect(self.read_output)
 
     def log(self, message):
         """Log mesajı yaz"""
         if self.log_callback:
             self.log_callback(message)
+
+    def read_output(self):
+        """QProcess çıktısını oku ve log'a yaz"""
+        data = self.readAllStandardOutput()
+        if data:
+            message = data.decode('utf-8', errors='replace').strip()
+            if message:
+                self.log(message)
 
     def find_llama_server(self):
         """llama-server çalıştırılabilir dosyasını bul"""
@@ -90,69 +103,58 @@ class LlamaServerManager:
         llama_server_cmd = self.find_llama_server()
 
         # Komutu oluştur
-        cmd = [llama_server_cmd, "-m", model_path]
-        cmd.extend(["--n-gpu-layers", str(gpu_layers)])
-        cmd.extend(["--ctx-size", str(context_size)])
-        cmd.extend(["--port", str(port)])
+        args = ["-m", model_path]
+        args.extend(["--n-gpu-layers", str(gpu_layers)])
+        args.extend(["--ctx-size", str(context_size)])
+        args.extend(["--port", str(port)])
 
         # Ek parametreleri ekle
         if extra_params:
             try:
                 extra_args = shlex.split(extra_params)
-                cmd.extend(extra_args)
+                args.extend(extra_args)
             except ValueError:
                 self.log(f"Ek parametreler ayrıştırılamadı: {extra_params}")
 
-        self.log(f"Sunucu başlatılıyor: {' '.join(cmd)}")
+        self.log(f"Sunucu başlatılıyor: {llama_server_cmd} {' '.join(args)}")
 
         try:
-            # preexec_fn=os.setsid ile süreç grubu oluştur
-            self.server_process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                preexec_fn=os.setsid
-            )
+            # Ortam ayarları
+            env = QProcessEnvironment.systemEnvironment()
+            self.setProcessEnvironment(env)
+            
+            # İşlemi başlat
+            self.start(llama_server_cmd, args)
             self.server_running = True
-            self.log("Sunucu başarıyla başlatıldı.")
+            self.log("✓ Sunucu başarıyla başlatıldı.")
             return True
         except FileNotFoundError:
             self.log("Hata: llama-server bulunamadı. llama.cpp'in kurulu olduğundan emin olun.")
         except Exception as e:
             self.log(f"Sunucu başlatılamadı: {e}")
+            self.server_running = False
 
         return False
 
     def cleanup_server_process(self):
         """Sunucu sürecini temizle (zombi süreçleri önle)"""
-        if self.server_process is None:
+        if not self.server_running:
             return
 
         try:
-            # Süreç hala çalışıyor mu kontrol et
-            if self.server_process.poll() is None:
-                # 1. Önce SIGTERM gönder (nazik kapatma)
-                try:
-                    os.killpg(os.getpgid(self.server_process.pid), signal.SIGTERM)
-                except (ProcessLookupError, OSError):
-                    pass
-
-                # 2. 2 saniye bekle
-                try:
-                    self.server_process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    # 3. Hala kapanmadıysa SIGKILL ile zorla kapat
-                    try:
-                        os.killpg(os.getpgid(self.server_process.pid), signal.SIGKILL)
-                        self.server_process.wait(timeout=1)
-                    except (ProcessLookupError, OSError, subprocess.TimeoutExpired):
-                        pass
-
-                self.log("✓ Temizlik tamamlandı, tüm süreçler sonlandırıldı.")
-        except Exception:
-            pass
+            # 1. Önce terminate (SIGTERM) gönder
+            self.terminate()
+            
+            # 2. 2 saniye bekle
+            if not self.waitForFinished(2000):
+                # 3. Hala kapanmadıysa kill (SIGKILL) ile zorla kapat
+                self.kill()
+                self.waitForFinished(1000)
+            
+            self.log("✓ Temizlik tamamlandı, tüm süreçler sonlandırıldı.")
+        except Exception as e:
+            self.log(f"Temizlik hatası: {e}")
         finally:
-            self.server_process = None
             self.server_running = False
 
     def stop_server(self):
