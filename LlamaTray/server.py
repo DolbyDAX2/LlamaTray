@@ -158,6 +158,13 @@ class LlamaServerManager:
         self.cleanup_server_process()
         self.server_running = False
 
+        # Son çare: sistemdeki tüm llama-server süreçlerini zorla sonlandır
+        try:
+            os.system("killall -9 llama-server 2>/dev/null")
+            self.log("🔫 Tüm llama-server süreçleri zorla sonlandırıldı.")
+        except Exception:
+            pass
+
     def is_running(self):
         """Sunucunun çalışıp çalışmadığını kontrol et"""
         return self.server_running
