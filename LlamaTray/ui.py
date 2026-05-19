@@ -9,10 +9,11 @@ import atexit
 from PyQt6.QtWidgets import (
     QApplication, QSystemTrayIcon, QMenu, QFileDialog, QTextEdit,
     QPushButton, QVBoxLayout, QWidget, QProgressBar, QLabel, QFrame,
-    QSpinBox, QComboBox, QLineEdit, QGroupBox, QFormLayout
+    QSpinBox, QComboBox, QLineEdit, QGroupBox, QFormLayout, QDialog,
+    QDialogButtonBox
 )
-from PyQt6.QtGui import QIcon, QAction, QIntValidator
-from PyQt6.QtCore import QTimer
+from PyQt6.QtGui import QIcon, QAction, QIntValidator, QDesktopServices
+from PyQt6.QtCore import QTimer, QUrl
 
 from .monitor import SystemMonitor
 from .server import LlamaServerManager
@@ -68,6 +69,12 @@ class LlamaTray(QSystemTrayIcon):
         self.stop_server_action = QAction("Sunucuyu Durdur", self)
         self.stop_server_action.triggered.connect(self.stop_server)
         self.menu.addAction(self.stop_server_action)
+
+        self.menu.addSeparator()
+
+        self.about_action = QAction("Hakkında", self)
+        self.about_action.triggered.connect(self.show_about_dialog)
+        self.menu.addAction(self.about_action)
 
         self.setContextMenu(self.menu)
 
@@ -194,6 +201,60 @@ class LlamaTray(QSystemTrayIcon):
 
         # Tüm ayarları yükle
         self.load_config()
+
+    def show_about_dialog(self):
+        """Hakkında penceresini göster"""
+        dialog = QDialog(self.window)
+        dialog.setWindowTitle("Hakkında / About")
+        dialog.setWindowIcon(self.default_icon)
+        dialog.setFixedSize(420, 360)
+        dialog.setModal(True)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Başlık
+        title_label = QLabel('<h1>🦙 LlamaTray v1.0.0</h1>')
+        title_label.setWordWrap(True)
+        layout.addWidget(title_label)
+
+        # Açıklama
+        desc_label = QLabel(
+            'Linux (Arch Linux / CachyOS) sistemler için minimalist, '
+            'hafif ve zombi süreç önleme mekanizmasına sahip PyQt6 tabanlı '
+            'Llama.cpp (llama-server) yönetim aracı.'
+        )
+        desc_label.setWordWrap(True)
+        layout.addWidget(desc_label)
+
+        layout.addSpacing(10)
+
+        # Geliştirici
+        dev_label = QLabel('<b>Geliştirici:</b> Fatih Durdu')
+        layout.addWidget(dev_label)
+
+        layout.addSpacing(10)
+
+        # Bağlantılar
+        links_label = QLabel(
+            '<b>Bağlantılar:</b><br>'
+            '• <a href="https://fatihdurdu.xyz" style="color: #4a9eff;">Kişisel Web Sitesi</a> — fatihdurdu.xyz<br>'
+            '• <a href="https://github.com/DolbyDAX2" style="color: #4a9eff;">GitHub Profili</a> — DolbyDAX2<br>'
+            '• <a href="https://gitea.fatihdurdu.xyz/dolbydax2/LlamaTray" style="color: #4a9eff;">Proje Kaynak Kodu</a> — Gitea'
+        )
+        links_label.setOpenExternalLinks(True)
+        links_label.setWordWrap(True)
+        layout.addWidget(links_label)
+
+        layout.addStretch()
+
+        # Kapat butonu
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        button_box.rejected.connect(dialog.accept)
+        layout.addWidget(button_box)
+
+        dialog.setLayout(layout)
+        dialog.exec()
 
     def get_config_path(self):
         """Yapılandırma dosyası yolunu döndür"""
