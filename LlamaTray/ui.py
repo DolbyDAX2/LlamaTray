@@ -72,7 +72,7 @@ class LlamaTray(QSystemTrayIcon):
 
         self.menu.addSeparator()
 
-        self.about_action = QAction("Hakkında", self)
+        self.about_action = QAction("Hakkında / About", self)
         self.about_action.triggered.connect(self.show_about_dialog)
         self.menu.addAction(self.about_action)
 
@@ -173,6 +173,12 @@ class LlamaTray(QSystemTrayIcon):
         monitor_frame.setLayout(monitor_layout)
         self.layout.addWidget(monitor_frame)
 
+        # Uygulama Hakkında butonu (en altta, ince ve şık)
+        self.about_button = QPushButton("ℹ️ Uygulama Hakkında")
+        self.about_button.clicked.connect(self.show_about_dialog)
+        self.about_button.setFixedHeight(28)
+        self.layout.addWidget(self.about_button)
+
         # Ana pencere
         self.window = QWidget()
         self.window.setLayout(self.layout)
@@ -207,44 +213,28 @@ class LlamaTray(QSystemTrayIcon):
         dialog = QDialog(self.window)
         dialog.setWindowTitle("Hakkında / About")
         dialog.setWindowIcon(self.default_icon)
-        dialog.setFixedSize(420, 360)
+        dialog.setFixedSize(420, 380)
         dialog.setModal(True)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(20, 20, 20, 20)
 
-        # Başlık
-        title_label = QLabel('<h1>🦙 LlamaTray v1.0.0</h1>')
-        title_label.setWordWrap(True)
-        layout.addWidget(title_label)
-
-        # Açıklama
-        desc_label = QLabel(
-            'Linux (Arch Linux / CachyOS) sistemler için minimalist, '
-            'hafif ve zombi süreç önleme mekanizmasına sahip PyQt6 tabanlı '
-            'Llama.cpp (llama-server) yönetim aracı.'
+        # HTML içerik
+        html_content = QLabel()
+        html_content.setWordWrap(True)
+        html_content.setOpenExternalLinks(True)
+        html_content.setText(
+            "<h3 style='color: #2980b9;'>🦙 LlamaTray v1.0.0</h3>"
+            "<p><b>Geliştirici:</b> Fatih Durdu</p>"
+            "<p>Linux (Arch Linux / CachyOS) sistemler için minimalist, "
+            "hafif ve zombi süreç önleme mekanizmasına sahip PyQt6 tabanlı "
+            "Llama.cpp (llama-server) yönetim aracı.</p>"
+            "<hr>"
+            "<p>🌐 <a href='https://fatihdurdu.xyz'>Kişisel Web Sitesi (fatihdurdu.xyz)</a></p>"
+            "<p>🐙 <a href='https://github.com/DolbyDAX2'>GitHub Profili (DolbyDAX2)</a></p>"
+            "<p>📦 <a href='https://gitea.fatihdurdu.xyz/dolbydax2/LlamaTray'>Proje Gitea Deposu</a></p>"
         )
-        desc_label.setWordWrap(True)
-        layout.addWidget(desc_label)
-
-        layout.addSpacing(10)
-
-        # Geliştirici
-        dev_label = QLabel('<b>Geliştirici:</b> Fatih Durdu')
-        layout.addWidget(dev_label)
-
-        layout.addSpacing(10)
-
-        # Bağlantılar
-        links_label = QLabel(
-            '<b>Bağlantılar:</b><br>'
-            '• <a href="https://fatihdurdu.xyz" style="color: #4a9eff;">Kişisel Web Sitesi</a> — fatihdurdu.xyz<br>'
-            '• <a href="https://github.com/DolbyDAX2" style="color: #4a9eff;">GitHub Profili</a> — DolbyDAX2<br>'
-            '• <a href="https://gitea.fatihdurdu.xyz/dolbydax2/LlamaTray" style="color: #4a9eff;">Proje Kaynak Kodu</a> — Gitea'
-        )
-        links_label.setOpenExternalLinks(True)
-        links_label.setWordWrap(True)
-        layout.addWidget(links_label)
+        layout.addWidget(html_content)
 
         layout.addStretch()
 
