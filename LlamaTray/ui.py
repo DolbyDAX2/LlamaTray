@@ -4,6 +4,7 @@ LlamaTray ana penceresi ve sistem tepsisi işlevlerini içerir.
 """
 
 import os
+import sys
 import json
 import atexit
 import webbrowser
@@ -31,12 +32,50 @@ if not os.path.exists(ICON_PATH):
     print(f"!!! DIKKAT: İkon bulunamadi, aranan konum: {ICON_PATH}")
 
 
-def cleanup_on_exit():
-    """Uygulama çıkışında tüm süreçleri temizle"""
+def cleanup_tray_icon():
+    """Sistem tepsisindeki ikonları temizle - uygulama crash olsa bile çalıştırılmalı"""
     global _tray_instance
     try:
-        if _tray_instance is not None and hasattr(_tray_instance, 'cleanup_server_process'):
-            _tray_instance.cleanup_server_process()
+        if _tray_instance is not None:
+            # Tray ikonunu gizle (Wayland/KDE uyumluluğu)
+            try:
+                _tray_instance.hide()
+            except Exception as e:
+                pass
+            
+            # Tray ikonunu bellekten sil
+            try:
+                _tray_instance.deleteLater()
+            except Exception as e:
+                pass
+            
+            # Eğer context menu varsa onu da sil
+            try:
+                if hasattr(_tray_instance, 'menu') and _tray_instance.menu:
+                    _tray_instance.menu.close()
+                    _tray_instance.menu.deleteLater()
+            except Exception:
+                pass
+    except Exception:
+        pass
+    finally:
+        _tray_instance = None
+
+
+def cleanup_on_exit():
+    """Uygulama çıkışında tüm süreçleri ve tray ikonunu temizle"""
+    global _tray_instance
+    try:
+        if _tray_instance is not None:
+            # Sunucuyu kapat
+            try:
+                if hasattr(_tray_instance, 'cleanup_server_process'):
+                    _tray_instance.cleanup_server_process()
+            except Exception:
+                pass
+            
+            # Tray ikonunu temizle
+            cleanup_tray_icon()
     except Exception:
         pass
 
@@ -211,6 +250,11 @@ class LlamaTray(QSystemTrayIcon):
                 self.log(f"⚠ Kapanış sırasında hata: {e}")
             finally:
                 original_close_event(event)
+                # Pencere kapandığında tray'i de kapat
+                try:
+                    self.cleanup_tray()
+                except Exception:
+                    pass
         self.window.closeEvent = window_close_event
 
         # Pencere ikonu
@@ -225,6 +269,14 @@ class LlamaTray(QSystemTrayIcon):
         # Global referansı ayarla (atexit için)
         global _tray_instance
         _tray_instance = self
+        
+        # QApplication signals bağla - uygulama çıkışında temizlik yap
+        try:
+            app = QApplication.instance()
+            if app:
+                app.aboutToQuit.connect(self.cleanup_tray)
+        except Exception:
+            pass
 
         # Tüm ayarları yükle
         self.load_config()
@@ -549,12 +601,47 @@ class LlamaTray(QSystemTrayIcon):
         """Log mesajı ekle"""
         self.log_window.append(message)
 
+    def cleanup_tray(self):
+        """Sistem tepsisindeki ikonları temiz bir şekilde kaldır"""
+        try:
+            # Tray ikonunu gizle
+            self.hide()
+        except Exception:
+            pass
+        
+        try:
+            # Context menu'yü kapat ve sil
+            if hasattr(self, 'menu') and self.menu:
+                self.menu.close()
+                self.menu.deleteLater()
+        except Exception:
+            pass
+        
+        try:
+            # Tray ikonunun kendisini bellekten sil
+            self.deleteLater()
+        except Exception:
+            pass
+
+    def __del__(self):
+        """Nesne bellekten silinirken tray ikonunu temizle"""
+        try:
+            self.cleanup_tray()
+        except Exception:
+            pass
+
     def closeEvent(self, event):
         """Uygulama kapanırken sunucuyu da otomatik kapat"""
-        print("Uygulama kapatılıyor, sunucu durduruluyor...")
-        if hasattr(self, 'server_manager') and self.server_manager:
-            self.server_manager.stop_server()
-        event.accept()
+        try:
+            print("Uygulama kapatılıyor, sunucu durduruluyor...")
+            if hasattr(self, 'server_manager') and self.server_manager:
+                self.server_manager.stop_server()
+            # Tray ikonunu temizle
+            self.cleanup_tray()
+        except Exception as e:
+            print(f"Kapanış hatası: {e}")
+        finally:
+            event.accept()
 
 
 # atexit ile temizlik fonksiyonunu kaydet
