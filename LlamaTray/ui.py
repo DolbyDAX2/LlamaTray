@@ -34,8 +34,11 @@ if not os.path.exists(ICON_PATH):
 def cleanup_on_exit():
     """Uygulama çıkışında tüm süreçleri temizle"""
     global _tray_instance
-    if _tray_instance is not None:
-        _tray_instance.cleanup_server_process()
+    try:
+        if _tray_instance is not None and hasattr(_tray_instance, 'cleanup_server_process'):
+            _tray_instance.cleanup_server_process()
+    except Exception:
+        pass
 
 
 class LlamaTray(QSystemTrayIcon):
@@ -49,6 +52,11 @@ class LlamaTray(QSystemTrayIcon):
 
         # Sunucu yöneticisi
         self.server_manager = LlamaServerManager(log_callback=self.log)
+        
+        # Server state sinyallerini bağla
+        self.server_manager.started.connect(self.on_server_started)
+        self.server_manager.finished.connect(self.on_server_finished)
+        self.server_manager.errorOccurred.connect(self.on_server_error)
 
         # Sistem monitörü
         self.system_monitor = SystemMonitor()
@@ -194,8 +202,15 @@ class LlamaTray(QSystemTrayIcon):
         # Pencere kapatıldığında (X butonu) sunucuyu otomatik durdur
         original_close_event = self.window.closeEvent
         def window_close_event(event):
-            self.stop_server()
-            original_close_event(event)
+            try:
+                self.log("=" * 60)
+                self.log("🚪 Pencere kapanıyor, sunucu durdurması yapılıyor...")
+                self.stop_server()
+                self.log("✓ Uygulama kapatılıyor.")
+            except Exception as e:
+                self.log(f"⚠ Kapanış sırasında hata: {e}")
+            finally:
+                original_close_event(event)
         self.window.closeEvent = window_close_event
 
         # Pencere ikonu
@@ -261,24 +276,33 @@ class LlamaTray(QSystemTrayIcon):
 
     def save_config(self):
         """Tüm ayarları kaydet"""
-        config_path = self.get_config_path()
-        config = {
-            "model_path": self.model_path,
-            "gpu_layers": self.gpu_layers_spinbox.value(),
-            "context_size": int(self.context_size_combobox.currentText()),
-            "port": self.port_spinbox.value(),
-            "extra_params": self.extra_params_lineedit.text()
-        }
         try:
+            config_path = self.get_config_path()
+            
+            # Context size'ı güvenli bir şekilde dönüştür
+            try:
+                context_size = int(self.context_size_combobox.currentText())
+            except (ValueError, TypeError):
+                self.log(f"⚠ Context size dönüştürülemedi, varsayılan 32768 kullanılıyor")
+                context_size = 32768
+            
+            config = {
+                "model_path": self.model_path,
+                "gpu_layers": self.gpu_layers_spinbox.value(),
+                "context_size": context_size,
+                "port": self.port_spinbox.value(),
+                "extra_params": self.extra_params_lineedit.text()
+            }
+            
             with open(config_path, "w") as f:
                 json.dump(config, f, indent=2)
             self.log("✓ Ayarlar başarıyla kaydedildi.")
-        except PermissionError as e:
-            self.log(f"⚠ Ayarlar kaydedilemedi: Dosya yazma izni yok. Lütfen dosya izinlerini kontrol edin.")
+        except PermissionError:
+            self.log(f"❌ Hata: Ayarlar kaydedilemedi - Dosya yazma izni yok. (Dosya: {config_path})")
         except OSError as e:
-            self.log(f"⚠ Ayarlar kaydedilemedi: Disk hatası ({e}). Lütfen disk alanını kontrol edin.")
+            self.log(f"❌ Hata: Ayarlar kaydedilemedi - Disk hatası: {e}")
         except Exception as e:
-            self.log(f"⚠ Ayarlar kaydedilemedi: Beklenmeyen hata ({e}).")
+            self.log(f"❌ Hata: Ayarlar kaydedilemedi - {type(e).__name__}: {e}")
 
     def load_config(self):
         """Tüm ayarları yükle"""
@@ -291,79 +315,153 @@ class LlamaTray(QSystemTrayIcon):
                 # Model yolu
                 self.model_path = config.get("model_path")
                 if self.model_path:
-                    self.log(f"✓ Kaydedilmiş model yolu yüklendi: {self.model_path}")
+                    self.log(f"✓ Model yolu yüklendi: {self.model_path}")
 
                 # GPU katmanları
                 gpu_layers = config.get("gpu_layers")
                 if gpu_layers is not None:
-                    self.gpu_layers_spinbox.setValue(gpu_layers)
+                    try:
+                        self.gpu_layers_spinbox.setValue(int(gpu_layers))
+                    except (ValueError, TypeError):
+                        self.log("⚠ GPU katmanları değeri geçersiz, varsayılan kullanılıyor")
 
                 # Context boyutu
                 context_size = config.get("context_size")
                 if context_size is not None:
-                    context_str = str(context_size)
-                    if self.context_size_combobox.findText(context_str) >= 0:
-                        self.context_size_combobox.setCurrentText(context_str)
+                    try:
+                        context_str = str(int(context_size))
+                        if self.context_size_combobox.findText(context_str) >= 0:
+                            self.context_size_combobox.setCurrentText(context_str)
+                    except (ValueError, TypeError):
+                        self.log("⚠ Context boyutu değeri geçersiz, varsayılan kullanılıyor")
 
                 # Port
                 port = config.get("port")
                 if port is not None:
-                    self.port_spinbox.setValue(port)
+                    try:
+                        self.port_spinbox.setValue(int(port))
+                    except (ValueError, TypeError):
+                        self.log("⚠ Port değeri geçersiz, varsayılan kullanılıyor")
 
                 # Ek parametreler
                 extra_params = config.get("extra_params")
                 if extra_params is not None:
-                    self.extra_params_lineedit.setText(extra_params)
+                    self.extra_params_lineedit.setText(str(extra_params))
 
-                self.log("✓ Tüm ayarlar başarıyla yüklendi.")
+                self.log("✓ Yapılandırma başarıyla yüklendi.")
 
             except json.JSONDecodeError as e:
-                self.log(f"⚠ Ayarlar yüklenemedi: Yapılandırma dosyası bozuk ({e}). Varsayılan ayarlar kullanılacak.")
-            except PermissionError as e:
-                self.log(f"⚠ Ayarlar yüklenemedi: Dosya okuma izni yok. Lütfen dosya izinlerini kontrol edin.")
+                self.log(f"❌ Hata: Yapılandırma dosyası geçersiz JSON - {e}")
+            except PermissionError:
+                self.log(f"❌ Hata: Yapılandırma dosyası okunamadı - İzin reddedildi")
             except Exception as e:
-                self.log(f"⚠ Ayarlar yüklenemedi: Beklenmeyen hata ({e}). Varsayılan ayarlar kullanılacak.")
+                self.log(f"❌ Hata: Yapılandırma yüklenirken hata - {type(e).__name__}: {e}")
         else:
             self.log("ℹ Kaydedilmiş yapılandırma bulunamadı. Varsayılan ayarlar kullanılıyor.")
 
     def browse_file(self):
         """Model dosyası seç"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self.window,
-            "Bilgisayarınızdan .gguf model dosyasını seçin",
-            "",
-            "GGUF Files (*.gguf)"
-        )
-        if file_path:
-            self.model_path = file_path
-            self.save_config()
-            self.log(f"Seçilen dosya: {file_path}")
+        try:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self.window,
+                "Bilgisayarınızdan .gguf model dosyasını seçin",
+                "",
+                "GGUF Files (*.gguf);;Tüm Dosyalar (*.*)"
+            )
+            if file_path:
+                if not os.path.exists(file_path):
+                    self.log(f"❌ Hata: Seçilen dosya artık mevcut değil: {file_path}")
+                    return
+                
+                self.model_path = file_path
+                file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+                self.log(f"✓ Model seçildi: {file_path}")
+                self.log(f"  Dosya boyutu: {file_size_mb:.2f} MB")
+                self.save_config()
+        except Exception as e:
+            self.log(f"❌ Hata: Model seçilirken hata - {type(e).__name__}: {e}")
 
     def start_server(self):
         """Sunucuyu başlat"""
-        gpu_layers = self.gpu_layers_spinbox.value()
-        context_size = int(self.context_size_combobox.currentText())
-        port = self.port_spinbox.value()
-        extra_params = self.extra_params_lineedit.text().strip()
+        try:
+            # Başlangıç kontrolleri
+            gpu_layers = self.gpu_layers_spinbox.value()
+            
+            # Context size'ı kontrol et
+            context_size_text = self.context_size_combobox.currentText()
+            try:
+                context_size = int(context_size_text)
+            except ValueError:
+                self.log(f"❌ Hata: Context size geçersiz sayı: {context_size_text}")
+                return
+            
+            port = self.port_spinbox.value()
+            extra_params = self.extra_params_lineedit.text().strip()
 
-        success = self.server_manager.start_server(
-            model_path=self.model_path,
-            gpu_layers=gpu_layers,
-            context_size=context_size,
-            port=port,
-            extra_params=extra_params
-        )
+            # UI button'larını disable et işlem sırasında
+            self.start_server_button.setEnabled(False)
+            self.stop_server_button.setEnabled(False)
+            self.browse_button.setEnabled(False)
+            
+            self.log("=" * 60)
+            self.log("🚀 Sunucu başlatma işlemi başladı...")
+            
+            success = self.server_manager.start_server(
+                model_path=self.model_path,
+                gpu_layers=gpu_layers,
+                context_size=context_size,
+                port=port,
+                extra_params=extra_params
+            )
 
-        if success:
-            self.save_config()
-            self.open_web_ui_button.setEnabled(True)  # Web UI butonunu aktifleştir
-            self.timer.start(1000)
+            if success:
+                self.save_config()
+                # Timer'ı başlat - sistem monitörünü güncelle
+                self.timer.start(1000)
+                # Web UI butonunu aktifleştir (başarıyla başlandıktan sonra on_started sinyali tetiklenecek)
+                self.log("✓ Sunucu başlatma talebi kabul edildi. Yapılandırma kaydedildi.")
+            else:
+                self.log("❌ Sunucu başlatma başarısız oldu.")
+                # Button'ları geri aktifleştir
+                self.start_server_button.setEnabled(True)
+                self.browse_button.setEnabled(True)
+                
+        except Exception as e:
+            self.log(f"❌ Beklenmeyen hata (start_server): {type(e).__name__}: {e}")
+            # Button'ları geri aktifleştir
+            self.start_server_button.setEnabled(True)
+            self.stop_server_button.setEnabled(True)
+            self.browse_button.setEnabled(True)
 
     def stop_server(self):
         """Sunucuyu durdur"""
-        self.server_manager.stop_server()
-        self.open_web_ui_button.setEnabled(False)  # Web UI butonunu devre dışı bırak
-        self.timer.stop()
+        try:
+            self.log("🛑 Sunucu durdurma talebi gönderiliyor...")
+            
+            # Button'ları disable et
+            self.stop_server_button.setEnabled(False)
+            self.start_server_button.setEnabled(False)
+            
+            self.server_manager.stop_server()
+            
+            # Timer'ı durdur
+            self.timer.stop()
+            
+            # Web UI butonunu devre dışı bırak
+            self.open_web_ui_button.setEnabled(False)
+            
+            # Button'ları geri aktifleştir
+            self.start_server_button.setEnabled(True)
+            self.browse_button.setEnabled(True)
+            
+            self.log("✓ Sunucu durdurma işlemi tamamlandı.")
+            
+        except Exception as e:
+            self.log(f"❌ Sunucu durdurma hatası: {type(e).__name__}: {e}")
+            # Button'ları geri aktifleştir
+            self.start_server_button.setEnabled(True)
+            self.stop_server_button.setEnabled(True)
+            self.browse_button.setEnabled(True)
 
     def cleanup_server_process(self):
         """Sunucu sürecini temizle"""
@@ -379,31 +477,73 @@ class LlamaTray(QSystemTrayIcon):
         except Exception as e:
             self.log(f"⚠ Web arayüzü açılamadı: {e}")
 
+    def on_server_started(self):
+        """Sunucu başarıyla başlatıldığında"""
+        self.log("✓ Sunucu başarıyla başlatıldı, Web UI butonu aktifleştirildi.")
+        self.open_web_ui_button.setEnabled(True)
+        self.start_server_button.setEnabled(False)
+        self.stop_server_button.setEnabled(True)
+        self.browse_button.setEnabled(False)
+
+    def on_server_finished(self, exit_code, exit_status):
+        """Sunucu kapandığında"""
+        self.log(f"⚠ Sunucu kapandı (Exit Code: {exit_code})")
+        self.open_web_ui_button.setEnabled(False)
+        self.start_server_button.setEnabled(True)
+        self.stop_server_button.setEnabled(False)
+        self.browse_button.setEnabled(True)
+        self.timer.stop()
+
+    def on_server_error(self, error):
+        """Sunucu başlatılırken hata oluştuğunda"""
+        self.log(f"❌ Server Process hatası: {error}")
+        self.start_server_button.setEnabled(True)
+        self.stop_server_button.setEnabled(False)
+        self.browse_button.setEnabled(True)
+        self.open_web_ui_button.setEnabled(False)
+        self.timer.stop()
+
     def update_system_monitor(self):
         """Sistem monitörünü güncelle"""
-        # CPU
-        cpu_usage = self.system_monitor.get_cpu_usage()
-        self.cpu_label.setText(f"CPU Kullanımı: %{cpu_usage:.1f}")
-        self.cpu_progress.setValue(int(cpu_usage))
+        try:
+            # CPU
+            try:
+                cpu_usage = self.system_monitor.get_cpu_usage()
+                self.cpu_label.setText(f"CPU Kullanımı: %{cpu_usage:.1f}")
+                self.cpu_progress.setValue(int(cpu_usage))
+            except Exception:
+                pass
 
-        # RAM
-        ram_usage = self.system_monitor.get_ram_usage()
-        self.ram_label.setText(f"RAM Kullanımı: %{ram_usage:.1f}")
-        self.ram_progress.setValue(int(ram_usage))
+            # RAM
+            try:
+                ram_usage = self.system_monitor.get_ram_usage()
+                self.ram_label.setText(f"RAM Kullanımı: %{ram_usage:.1f}")
+                self.ram_progress.setValue(int(ram_usage))
+            except Exception:
+                pass
 
-        # GPU
-        if self.system_monitor.gpu_available:
-            gpu_usage = self.system_monitor.get_gpu_usage()
-            if gpu_usage is not None:
-                self.gpu_label.setText(f"GPU Kullanımı: %{gpu_usage:.1f}")
-                self.gpu_progress.setValue(int(gpu_usage))
+            # GPU
+            if self.system_monitor.gpu_available:
+                try:
+                    gpu_usage = self.system_monitor.get_gpu_usage()
+                    if gpu_usage is not None:
+                        self.gpu_label.setText(f"GPU Kullanımı: %{gpu_usage:.1f}")
+                        self.gpu_progress.setValue(int(gpu_usage))
+                except Exception:
+                    pass
 
-        # VRAM
-        if self.system_monitor.vram_available:
-            vram_usage = self.system_monitor.get_vram_usage()
-            if vram_usage is not None:
-                self.vram_label.setText(f"VRAM Kullanımı: %{vram_usage:.1f}")
-                self.vram_progress.setValue(int(vram_usage))
+            # VRAM
+            if self.system_monitor.vram_available:
+                try:
+                    vram_usage = self.system_monitor.get_vram_usage()
+                    if vram_usage is not None:
+                        self.vram_label.setText(f"VRAM Kullanımı: %{vram_usage:.1f}")
+                        self.vram_progress.setValue(int(vram_usage))
+                except Exception:
+                    pass
+        except Exception:
+            # Timer callback'inde hata olursa sessiz kalsın, uygulama devam etsin
+            pass
 
     def log(self, message):
         """Log mesajı ekle"""
