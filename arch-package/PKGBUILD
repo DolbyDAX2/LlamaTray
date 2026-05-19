@@ -1,6 +1,6 @@
 pkgname=llamatray-git
 pkgver=1.0.0
-pkgrel=4
+pkgrel=5
 pkgdesc="PyQt6 based Llama.cpp Tray Manager for Linux"
 arch=('any')
 url="https://github.com/DolbyDAX2/LlamaTray"
@@ -15,9 +15,9 @@ package() {
     install -d "${pkgdir}/opt/LlamaTray"
     cp -r "${srcdir}/LlamaTray/"* "${pkgdir}/opt/LlamaTray/"
 
-    # Sistemin global olarak çalıştırabilmesi için /usr/bin altına başlatıcı symlink ekle
+    # Sistemin global olarak çalıştırabilmesi için /usr/bin altına akıllı başlatıcı ekle
     install -d "${pkgdir}/usr/bin"
-    echo -e '#!/bin/bash\ncd /opt/LlamaTray && exec python -m LlamaTray.main "$@"' > "${pkgdir}/usr/bin/LlamaTray"
+    echo -e '#!/bin/bash\n# Python kapandığında veya kesildiğinde çalışacak temizlik fonksiyonu\ncleanup() {\n    killall -9 llama-server 2>/dev/null\n}\ntrap cleanup EXIT\n\ncd /opt/LlamaTray\npython -m LlamaTray.main "$@"' > "${pkgdir}/usr/bin/LlamaTray"
     chmod +x "${pkgdir}/usr/bin/LlamaTray"
 
     # Masaüstü kısayolunu menüye yerleştir
