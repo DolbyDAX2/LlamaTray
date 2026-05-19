@@ -6,6 +6,7 @@ LlamaTray ana penceresi ve sistem tepsisi işlevlerini içerir.
 import os
 import json
 import atexit
+import webbrowser
 from PyQt6.QtWidgets import (
     QApplication, QSystemTrayIcon, QMenu, QFileDialog, QTextEdit,
     QPushButton, QVBoxLayout, QWidget, QProgressBar, QLabel, QFrame,
@@ -93,6 +94,10 @@ class LlamaTray(QSystemTrayIcon):
         self.stop_server_button = QPushButton("Sunucuyu Durdur")
         self.stop_server_button.clicked.connect(self.stop_server)
 
+        self.open_web_ui_button = QPushButton("Web Arayüzünü Aç")
+        self.open_web_ui_button.clicked.connect(self.open_web_ui)
+        self.open_web_ui_button.setEnabled(False)  # Başlangıçta devre dışı
+
         # CPU ve RAM için progress barlar
         self.cpu_label = QLabel("CPU Kullanımı: %0")
         self.cpu_progress = QProgressBar()
@@ -156,6 +161,7 @@ class LlamaTray(QSystemTrayIcon):
         self.layout.addWidget(self.browse_button)
         self.layout.addWidget(self.start_server_button)
         self.layout.addWidget(self.stop_server_button)
+        self.layout.addWidget(self.open_web_ui_button)
         self.layout.addWidget(advanced_group)
 
         # Sistem monitörü bilgilerini ekle
@@ -350,16 +356,28 @@ class LlamaTray(QSystemTrayIcon):
 
         if success:
             self.save_config()
+            self.open_web_ui_button.setEnabled(True)  # Web UI butonunu aktifleştir
             self.timer.start(1000)
 
     def stop_server(self):
         """Sunucuyu durdur"""
         self.server_manager.stop_server()
+        self.open_web_ui_button.setEnabled(False)  # Web UI butonunu devre dışı bırak
         self.timer.stop()
 
     def cleanup_server_process(self):
         """Sunucu sürecini temizle"""
         self.server_manager.cleanup_server_process()
+
+    def open_web_ui(self):
+        """Web arayüzünü varsayılan tarayıcıda aç"""
+        port = self.port_spinbox.value()
+        url = f"http://127.0.0.1:{port}"
+        try:
+            webbrowser.open(url)
+            self.log(f"✓ Web arayüzü açılıyor: {url}")
+        except Exception as e:
+            self.log(f"⚠ Web arayüzü açılamadı: {e}")
 
     def update_system_monitor(self):
         """Sistem monitörünü güncelle"""
