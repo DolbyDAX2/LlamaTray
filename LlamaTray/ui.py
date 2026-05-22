@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QApplication, QSystemTrayIcon, QMenu, QFileDialog, QTextEdit,
     QPushButton, QVBoxLayout, QWidget, QProgressBar, QLabel, QFrame,
     QSpinBox, QComboBox, QLineEdit, QGroupBox, QFormLayout, QDialog,
-    QDialogButtonBox
+    QDialogButtonBox, QInputDialog, QHBoxLayout
 )
 from PyQt6.QtGui import QIcon, QAction, QIntValidator, QDesktopServices
 from PyQt6.QtCore import QTimer, QUrl
@@ -202,6 +202,34 @@ class LlamaTray(QSystemTrayIcon):
         advanced_layout.addRow("Ek Parametreler:", self.extra_params_lineedit)
         advanced_group.setLayout(advanced_layout)
 
+        # ============ PROFİL YÖNETİMİ ============
+        profile_group = QGroupBox("Profil Yönetimi")
+        profile_layout = QVBoxLayout()
+
+        # Profil seçme combobox'ı
+        profile_select_layout = QHBoxLayout()
+        self.profile_combobox = QComboBox()
+        self.profile_combobox.setMinimumHeight(28)
+        self.profile_combobox.currentIndexChanged.connect(self.on_profile_selected)
+        profile_select_layout.addWidget(self.profile_combobox, 1)
+
+        # Profil butonları
+        self.save_profile_button = QPushButton("💾 Profili Kaydet")
+        self.save_profile_button.clicked.connect(self.save_current_profile)
+        self.save_profile_button.setFixedHeight(28)
+
+        self.delete_profile_button = QPushButton("🗑 Profili Sil")
+        self.delete_profile_button.clicked.connect(self.delete_selected_profile)
+        self.delete_profile_button.setFixedHeight(28)
+
+        profile_buttons_layout = QHBoxLayout()
+        profile_buttons_layout.addWidget(self.save_profile_button)
+        profile_buttons_layout.addWidget(self.delete_profile_button)
+
+        profile_layout.addLayout(profile_select_layout)
+        profile_layout.addLayout(profile_buttons_layout)
+        profile_group.setLayout(profile_layout)
+
         # Ana layout
         self.layout = QVBoxLayout()
         self.layout.addWidget(self.log_window)
@@ -210,6 +238,7 @@ class LlamaTray(QSystemTrayIcon):
         self.layout.addWidget(self.stop_server_button)
         self.layout.addWidget(self.open_web_ui_button)
         self.layout.addWidget(advanced_group)
+        self.layout.addWidget(profile_group)
 
         # Sistem monitörü bilgilerini ekle
         monitor_frame = QFrame()
@@ -281,6 +310,9 @@ class LlamaTray(QSystemTrayIcon):
         # Tüm ayarları yükle
         self.load_config()
 
+        # Profil listesini yükle
+        self.refresh_profile_combobox()
+
     def show_about_dialog(self):
         """Hakkında penceresini göster"""
         dialog = QDialog(self.window)
@@ -319,12 +351,185 @@ class LlamaTray(QSystemTrayIcon):
         dialog.setLayout(layout)
         dialog.exec()
 
-    def get_config_path(self):
-        """Yapılandırma dosyası yolunu döndür"""
+    def get_config_dir(self):
+        """Yapılandırma dizinini döndür (oluşturur)"""
         config_dir = os.path.join(os.path.expanduser("~"), ".llamatray")
         if not os.path.exists(config_dir):
-            os.makedirs(config_dir)
-        return os.path.join(config_dir, "config.json")
+            os.makedirs(config_dir, exist_ok=True)
+        return config_dir
+
+    def get_config_path(self):
+        """Yapılandırma dosyası yolunu döndür"""
+        return os.path.join(self.get_config_dir(), "config.json")
+
+    def get_profiles_path(self):
+        """Profil JSON dosyasının yolunu döndür"""
+        return os.path.join(self.get_config_dir(), "profiles.json")
+
+    def load_profiles(self):
+        """Kayıtlı profilleri JSON'dan yükle"""
+        profiles_path = self.get_profiles_path()
+        if os.path.exists(profiles_path):
+            try:
+                with open(profiles_path, "r") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, Exception) as e:
+                self.log(f"⚠ Profiller yüklenemedi: {e}")
+        return {}
+
+    def save_profiles(self, profiles):
+        """Profilleri JSON dosyasına yaz"""
+        profiles_path = self.get_profiles_path()
+        try:
+            with open(profiles_path, "w") as f:
+                json.dump(profiles, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            self.log(f"❌ Profiller kaydedilemedi: {e}")
+
+    def refresh_profile_combobox(self):
+        """Combobox'ı kayıtlı profillerle doldur, mevcut seçimi koru"""
+        # Mevcut seçimi hatırla
+        current_name = self.profile_combobox.currentText()
+
+        self.profile_combobox.blockSignals(True)
+        self.profile_combobox.clear()
+
+        profiles = self.load_profiles()
+        if profiles:
+            self.profile_combobox.addItems(sorted(profiles.keys()))
+            # Daha önce seçili olan varsa onu seç
+            idx = self.profile_combobox.findText(current_name)
+            if idx >= 0:
+                self.profile_combobox.setCurrentIndex(idx)
+        else:
+            self.profile_combobox.addItem("(Profil yok)")
+
+        self.profile_combobox.blockSignals(False)
+
+    def get_current_form_values(self):
+        """Formdaki tüm alanların değerlerini dict olarak döndür"""
+        try:
+            context_size = int(self.context_size_combobox.currentText())
+        except (ValueError, TypeError):
+            context_size = 32768
+        return {
+            "gpu_layers": self.gpu_layers_spinbox.value(),
+            "context_size": context_size,
+            "port": self.port_spinbox.value(),
+            "extra_args": self.extra_params_lineedit.text().strip()
+        }
+
+    def apply_profile_values(self, profile_data):
+        """Profil verisini form alanlarına uygula"""
+        # GPU katmanları
+        gpu_layers = profile_data.get("gpu_layers")
+        if gpu_layers is not None:
+            try:
+                self.gpu_layers_spinbox.setValue(int(gpu_layers))
+            except (ValueError, TypeError):
+                pass
+
+        # Context boyutu
+        context_size = profile_data.get("context_size")
+        if context_size is not None:
+            try:
+                context_str = str(int(context_size))
+                if self.context_size_combobox.findText(context_str) >= 0:
+                    self.context_size_combobox.setCurrentText(context_str)
+            except (ValueError, TypeError):
+                pass
+
+        # Port
+        port = profile_data.get("port")
+        if port is not None:
+            try:
+                self.port_spinbox.setValue(int(port))
+            except (ValueError, TypeError):
+                pass
+
+        # Ek parametreler
+        extra_args = profile_data.get("extra_args")
+        if extra_args is not None:
+            self.extra_params_lineedit.setText(str(extra_args))
+
+    def save_current_profile(self):
+        """Mevcut form değerlerini bir profile kaydet"""
+        # Kullanıcıdan profil adı iste
+        profile_name, ok = QInputDialog.getText(
+            self.window,
+            "Profili Kaydet",
+            "Profil adı:",
+            text=""
+        )
+        if not ok or not profile_name:
+            return
+
+        profile_name = profile_name.strip()
+        if not profile_name:
+            self.log("⚠ Profil adı boş olamaz.")
+            return
+
+        # Mevcut değerleri al
+        values = self.get_current_form_values()
+        values["profile_name"] = profile_name
+
+        # Profili kaydet (aynı isim varsa üzerine yaz)
+        profiles = self.load_profiles()
+        is_update = profile_name in profiles
+        profiles[profile_name] = values
+        self.save_profiles(profiles)
+
+        # Combobox'ı güncelle ve yeni profili seç
+        self.refresh_profile_combobox()
+        idx = self.profile_combobox.findText(profile_name)
+        if idx >= 0:
+            self.profile_combobox.setCurrentIndex(idx)
+
+        if is_update:
+            self.log(f"✓ Profil güncellendi: '{profile_name}'")
+        else:
+            self.log(f"✓ Profil kaydedildi: '{profile_name}'")
+
+    def on_profile_selected(self, index):
+        """Combobox'tan profil seçildiğinde form alanlarını doldur"""
+        if index < 0:
+            return
+
+        profile_name = self.profile_combobox.currentText()
+        if not profile_name or profile_name == "(Profil yok)":
+            return
+
+        profiles = self.load_profiles()
+        profile_data = profiles.get(profile_name)
+        if profile_data:
+            self.apply_profile_values(profile_data)
+            self.log(f"✓ Profil yüklendi: '{profile_name}'")
+
+    def delete_selected_profile(self):
+        """Seçili profili sil"""
+        profile_name = self.profile_combobox.currentText()
+        if not profile_name or profile_name == "(Profil yok)":
+            self.log("⚠ Silinecek profil seçilmedi.")
+            return
+
+        # Onay sor
+        from PyQt6.QtWidgets import QMessageBox
+        reply = QMessageBox.question(
+            self.window,
+            "Profili Sil",
+            f"'{profile_name}' profilini silmek istediğinize emin misiniz?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        profiles = self.load_profiles()
+        if profile_name in profiles:
+            del profiles[profile_name]
+            self.save_profiles(profiles)
+            self.refresh_profile_combobox()
+            self.log(f"✓ Profil silindi: '{profile_name}'")
 
     def save_config(self):
         """Tüm ayarları kaydet"""
