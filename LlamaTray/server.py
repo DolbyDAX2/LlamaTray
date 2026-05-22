@@ -73,7 +73,7 @@ class LlamaServerManager(QProcess):
     def read_output(self):
         """QProcess çıktısını oku ve log'a yaz"""
         try:
-            data = self.readAllStandardOutput()
+            data = self.readAllStandardOutput().data()
             if data:
                 message = data.decode('utf-8', errors='replace').strip()
                 if message:

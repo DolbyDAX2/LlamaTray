@@ -7,11 +7,12 @@ arch=('any')
 url="https://github.com/DolbyDAX2/LlamaTray"
 license=('MIT')
 depends=('python' 'python-pyqt6' 'python-psutil' 'python-requests')
-makedepends=('git')
+makedepends=('git') # Git deposundan çekim yapabilmek için şart
 optdepends=('nvidia-ml-py: NVIDIA GPU monitoring support')
 provides=('llamatray')
 conflicts=('llamatray')
 
+# Sabit tar.gz yerine doğrudan projenin ana Git deposunu kaynak alıyoruz
 source=("${pkgname}::git+https://github.com/DolbyDAX2/LlamaTray.git")
 md5sums=('SKIP')
 
@@ -21,7 +22,7 @@ package() {
     # Python modüllerini /opt/LlamaTray altına kopyala
     install -d "${pkgdir}/opt/LlamaTray"
 
-    # Gerekli dosyaları kopyala
+    # .git ve arch-package klasörlerini hariç tutarak tertemiz kopyalama yapalım
     cp -r LlamaTray "${pkgdir}/opt/LlamaTray/"
     cp requirements.txt "${pkgdir}/opt/LlamaTray/" 2>/dev/null || true
     cp README.md "${pkgdir}/opt/LlamaTray/" 2>/dev/null || true
