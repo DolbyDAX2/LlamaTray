@@ -1,25 +1,55 @@
 pkgname=llamatray-git
 pkgver=1.0.0
-pkgrel=14
+pkgrel=18
 pkgdesc="PyQt6 based Llama.cpp Tray Manager for Linux"
 arch=('any')
 url="https://github.com/DolbyDAX2/LlamaTray"
 license=('MIT')
-depends=('python' 'python-pyqt6' 'python-psutil')
+depends=('python' 'python-pyqt6' 'python-psutil' 'python-requests')
 optdepends=('nvidia-ml-py: NVIDIA GPU monitoring support')
-source=("git+https://gitea.fatihdurdu.xyz/dolbydax2/LlamaTray.git" "LlamaTray.desktop")
-md5sums=('SKIP' 'SKIP')
+source=("git+https://gitea.fatihdurdu.xyz/dolbydax2/LlamaTray.git")
+md5sums=('SKIP')
 
 package() {
-    # Hedef dizini oluştur ve Gitea'dan inen tüm LlamaTray klasör yapısını /opt altına kopyala
+    # Python modüllerini /opt/LlamaTray altına kopyala
     install -d "${pkgdir}/opt/LlamaTray"
-    cp -r "${srcdir}/LlamaTray/"* "${pkgdir}/opt/LlamaTray/"
+    
+    # Git deposundan sadece gerekli dosyaları kopyala (.git ve arch-package hariç)
+    cp -r "${srcdir}/LlamaTray/LlamaTray" "${pkgdir}/opt/LlamaTray/"
+    cp "${srcdir}/LlamaTray/requirements.txt" "${pkgdir}/opt/LlamaTray/" 2>/dev/null || true
+    cp "${srcdir}/LlamaTray/README.md" "${pkgdir}/opt/LlamaTray/" 2>/dev/null || true
 
-    # Sistemin global olarak çalıştırabilmesi için /usr/bin altına akıllı başlatıcı ekle
+    # Sistemin global olarak çalıştırabilmesi için /usr/bin altına başlatıcı ekle
     install -d "${pkgdir}/usr/bin"
-    echo -e '#!/bin/bash\n# Python kapandığında veya kesildiğinde çalışacak temizlik fonksiyonu\ncleanup() {\n    killall -9 llama-server 2>/dev/null\n}\ntrap cleanup EXIT\n\ncd /opt/LlamaTray\npython -m LlamaTray.main "$@"' > "${pkgdir}/usr/bin/LlamaTray"
+    cat > "${pkgdir}/usr/bin/LlamaTray" << 'EOF'
+#!/bin/bash
+# Temizlik fonksiyonu
+cleanup() {
+    killall -9 llama-server 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+cd /opt/LlamaTray
+python -m LlamaTray "$@"
+EOF
     chmod +x "${pkgdir}/usr/bin/LlamaTray"
 
+    # İkon dosyasını sistem ikon dizinine kopyala
+    install -d "${pkgdir}/usr/share/pixmaps"
+    cp "${srcdir}/LlamaTray/LlamaTray/assets/icon.png" "${pkgdir}/usr/share/pixmaps/LlamaTray.png" 2>/dev/null || \
+    cp "${srcdir}/LlamaTray/LlamaTray/icon.png" "${pkgdir}/usr/share/pixmaps/LlamaTray.png" 2>/dev/null || true
+
     # Masaüstü kısayolunu menüye yerleştir
-    install -Dm644 "${srcdir}/LlamaTray.desktop" "${pkgdir}/usr/share/applications/LlamaTray.desktop"
+    install -d "${pkgdir}/usr/share/applications"
+    cat > "${pkgdir}/usr/share/applications/LlamaTray.desktop" << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=LlamaTray
+Comment=Llama.cpp Tray Manager
+Exec=LlamaTray
+Icon=LlamaTray
+Categories=Utility;
+Terminal=false
+EOF
+    chmod 644 "${pkgdir}/usr/share/applications/LlamaTray.desktop"
 }
