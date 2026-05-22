@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=LlamaTray
-Comment=PyQt6 based Llama.cpp Tray Manager
-Exec=/usr/bin/LlamaTray
-Icon=/opt/LlamaTray/LlamaTray/assets/icon.png
-Terminal=false
-Type=Application
-Categories=Utility;Development;
-StartupWMClass=LlamaTray
