@@ -114,9 +114,9 @@ LlamaTray/
 
 ### 🔗 Links
 
+- **LlamaTray Page:** [fatihdurdu.xyz/llamatray](https://www.fatihdurdu.xyz/llamatray.html)
 - **GitHub:** [github.com/DolbyDAX2/LlamaTray](https://github.com/DolbyDAX2/LlamaTray)
 - **Gitea Mirror:** [gitea.fatihdurdu.xyz/dolbydax2/LlamaTray](https://gitea.fatihdurdu.xyz/dolbydax2/LlamaTray)
-- **Developer:** [fatihdurdu.xyz](https://fatihdurdu.xyz)
 
 ### 📄 License
 
@@ -234,9 +234,9 @@ LlamaTray/
 
 ### 🔗 Bağlantılar
 
+- **LlamaTray Sayfası:** [fatihdurdu.xyz/llamatray](https://www.fatihdurdu.xyz/llamatray.html)
 - **GitHub:** [github.com/DolbyDAX2/LlamaTray](https://github.com/DolbyDAX2/LlamaTray)
 - **Gitea Mirror:** [gitea.fatihdurdu.xyz/dolbydax2/LlamaTray](https://gitea.fatihdurdu.xyz/dolbydax2/LlamaTray)
-- **Geliştirici:** [fatihdurdu.xyz](https://fatihdurdu.xyz)
 
 ### 📄 Lisans
 
