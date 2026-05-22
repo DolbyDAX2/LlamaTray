@@ -8,6 +8,7 @@ import subprocess
 import shlex
 import signal
 import socket
+import time
 from PyQt6.QtCore import QProcess, QProcessEnvironment
 
 
@@ -171,7 +172,7 @@ class LlamaServerManager(QProcess):
             model_size_mb = os.path.getsize(model_path) / (1024 * 1024)
             self.log(f"📦 Model boyutu: {model_size_mb:.2f} MB")
             if model_size_mb < 100:
-                self.log("⚠ Uyarı: Model dosyası çok küçük görünüyor ({:.2f} MB). Geçerli bir GGUF dosyası mı?")
+                self.log(f"⚠ Uyarı: Model dosyası çok küçük görünüyor ({model_size_mb:.2f} MB). Geçerli bir GGUF dosyası mı?")
         except Exception as e:
             self.log(f"⚠ Model boyutu kontrol edilemedi: {e}")
 
@@ -190,39 +191,38 @@ class LlamaServerManager(QProcess):
             self.log(f"❌ Hata: Port geçersiz ({port}). 1024 ile 65535 arasında olmalı.")
             return False
 
-        # Port'un boş olup olmadığını kontrol et
-        if is_port_in_use(port):
-            self.log(f"⚠ Port {port} kullanımda! Eski süreçler temizlenmeye çalışılıyor...")
-            cleanup_old_processes(port)
-            
-            # Temizliğin işe yaradığını kontrol et
-            import time
-            time.sleep(1)
-            if is_port_in_use(port):
-                self.log(f"❌ Hata: Port {port} temizlenemedi. Başka bir port deneyin veya lsof ile kontrol edin.")
-                return False
-            self.log(f"✓ Port {port} başarıyla temizlendi.")
-        else:
-            self.log(f"✓ Port {port} boş.")
-
         # Öncesi: Eski zombi süreçleri temizle
-        self.log("🧹 Eski llama-server süreçleri temizleniyor...")
+        self.log("🧹 Eski llama-server süreçleri ve port kontrolü yapılıyor...")
         cleanup_old_processes(port)
+        
+        # Port'un boş olup olmadığını kontrol et (temizlik sonrası)
+        time.sleep(1)
+        if is_port_in_use(port):
+            self.log(f"❌ Hata: Port {port} temizlenemedi. Başka bir port deneyin veya lsof ile kontrol edin.")
+            return False
+        self.log(f"✓ Port {port} boş.")
         
         # Port ve host'u kaydet
         self.port = port
         self.host = "127.0.0.1"
 
         llama_server_cmd = self.find_llama_server()
-        if not llama_server_cmd or not os.access(llama_server_cmd if os.path.isabs(llama_server_cmd) else "/usr/bin/llama-server", os.X_OK):
-            # Fallback olarak PATH'te ara
+        if not llama_server_cmd:
+            self.log("❌ Hata: llama-server bulunamadı. llama.cpp'in kurulu olduğundan emin olun.")
+            return False
+        # Bulunan komutun çalıştırılabilir olduğunu kontrol et
+        if os.path.isabs(llama_server_cmd) and not os.access(llama_server_cmd, os.X_OK):
+            self.log(f"❌ Hata: {llama_server_cmd} çalıştırılabilir değil.")
+            return False
+        if not os.path.isabs(llama_server_cmd):
+            # Göreceli yol (PATH'te aranacak) - varlığını kontrol et
             try:
-                result = subprocess.run(["which", "llama-server"], capture_output=True, text=True, timeout=2)
+                result = subprocess.run(["which", llama_server_cmd], capture_output=True, text=True, timeout=2)
                 if result.returncode != 0:
-                    self.log("❌ Hata: llama-server bulunamadı. llama.cpp'in kurulu olduğundan emin olun.")
+                    self.log(f"❌ Hata: '{llama_server_cmd}' PATH'te bulunamadı. llama.cpp'in kurulu olduğundan emin olun.")
                     return False
             except Exception:
-                self.log("❌ Hata: llama-server çalıştırılabilir dosyası bulunamadı.")
+                self.log(f"❌ Hata: '{llama_server_cmd}' aranırken hata oluştu.")
                 return False
 
         # Komutu oluştur
@@ -326,7 +326,6 @@ class LlamaServerManager(QProcess):
         self.cleanup_server_process()
         
         # 3. Son kontrol: port hala açık mı?
-        import time
         time.sleep(1)
         if is_port_in_use(self.port):
             self.log(f"⚠ Port {self.port} hala açık, zorla temizleniyor...")

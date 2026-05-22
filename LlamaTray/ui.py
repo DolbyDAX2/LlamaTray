@@ -418,7 +418,7 @@ class LlamaTray(QSystemTrayIcon):
                 self.window,
                 "Bilgisayarınızdan .gguf model dosyasını seçin",
                 "",
-                "GGUF Files (*.gguf);;Tüm Dosyalar (*.*)"
+                "GGUF/GGML Files (*.gguf *.ggml);;Tüm Dosyalar (*.*)"
             )
             if file_path:
                 if not os.path.exists(file_path):
@@ -629,19 +629,6 @@ class LlamaTray(QSystemTrayIcon):
             self.cleanup_tray()
         except Exception:
             pass
-
-    def closeEvent(self, event):
-        """Uygulama kapanırken sunucuyu da otomatik kapat"""
-        try:
-            print("Uygulama kapatılıyor, sunucu durduruluyor...")
-            if hasattr(self, 'server_manager') and self.server_manager:
-                self.server_manager.stop_server()
-            # Tray ikonunu temizle
-            self.cleanup_tray()
-        except Exception as e:
-            print(f"Kapanış hatası: {e}")
-        finally:
-            event.accept()
 
 
 # atexit ile temizlik fonksiyonunu kaydet
