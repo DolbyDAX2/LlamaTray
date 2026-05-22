@@ -14,3 +14,17 @@ __pycache__/
 
 # Config (kullanıcıya özel)
 *.local
+
+# Arch package build artifacts
+arch-package/pkg/
+arch-package/src/
+arch-package/*.pkg.tar.zst
+arch-package/LlamaTray/objects/
+arch-package/LlamaTray/refs/
+arch-package/LlamaTray/hooks/
+arch-package/LlamaTray/info/
+arch-package/LlamaTray/HEAD
+arch-package/LlamaTray/config
+arch-package/LlamaTray/description
+arch-package/LlamaTray/FETCH_HEAD
+arch-package/LlamaTray/packed-refs

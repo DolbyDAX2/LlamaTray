@@ -13,20 +13,23 @@ from PyQt6.QtWidgets import QApplication
 from .ui import LlamaTray, cleanup_tray_icon, cleanup_on_exit
 
 
+import traceback
+
 def setup_crash_handler():
     """Uygulama crash olsa bile tray ikonunu temizlemek için handler kur"""
     original_excepthook = sys.excepthook
-    
+
     def custom_excepthook(exc_type, exc_value, traceback_obj):
         """Hata oluştuğunda tray'i temizle, sonra exception göster"""
         print(f"❌ KRITIK HATA: {exc_type.__name__}: {exc_value}")
+        traceback.print_exception(exc_type, exc_value, traceback_obj)
         try:
             cleanup_tray_icon()
         except Exception:
             pass
         # Orijinal exception handler'ı çağır
         original_excepthook(exc_type, exc_value, traceback_obj)
-    
+
     sys.excepthook = custom_excepthook
 
 
