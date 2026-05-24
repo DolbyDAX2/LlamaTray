@@ -181,10 +181,13 @@ class LlamaTray(QSystemTrayIcon):
         self.gpu_layers_spinbox.setSuffix(" katman")
 
         self.context_size_combobox = QComboBox()
-        self.context_size_combobox.addItems(["2048", "4096", "8192", "16384", "32768", "65536", "131072"])
+        self.context_size_combobox.addItems(["16384", "32768", "65536", "131072", "262144"])
         self.context_size_combobox.setCurrentText("32768")
+        # Combobox'ı editabl yap ama sadece dropdown listesi göster
         self.context_size_combobox.setEditable(True)
         self.context_size_combobox.setValidator(QIntValidator(512, 1000000))
+        # Dropdown listesindeki öğelerin sırasını koru - ilk öğeyi varsayılan yap
+        self.context_size_combobox.setCurrentIndex(0)
 
         self.port_spinbox = QSpinBox()
         self.port_spinbox.setRange(1024, 65535)
@@ -218,12 +221,17 @@ class LlamaTray(QSystemTrayIcon):
         self.save_profile_button.clicked.connect(self.save_current_profile)
         self.save_profile_button.setFixedHeight(28)
 
+        self.update_profile_button = QPushButton("🔄 Profili Güncelle")
+        self.update_profile_button.clicked.connect(self.update_selected_profile)
+        self.update_profile_button.setFixedHeight(28)
+
         self.delete_profile_button = QPushButton("🗑 Profili Sil")
         self.delete_profile_button.clicked.connect(self.delete_selected_profile)
         self.delete_profile_button.setFixedHeight(28)
 
         profile_buttons_layout = QHBoxLayout()
         profile_buttons_layout.addWidget(self.save_profile_button)
+        profile_buttons_layout.addWidget(self.update_profile_button)
         profile_buttons_layout.addWidget(self.delete_profile_button)
 
         profile_layout.addLayout(profile_select_layout)
@@ -420,7 +428,7 @@ class LlamaTray(QSystemTrayIcon):
         }
 
     def apply_profile_values(self, profile_data):
-        """Profil verisini form alanlarına uygula"""
+        """Profil verisini form alanlarına uygula - combobox'ta sadece hazır seçenekler görünür"""
         # GPU katmanları
         gpu_layers = profile_data.get("gpu_layers")
         if gpu_layers is not None:
@@ -429,30 +437,22 @@ class LlamaTray(QSystemTrayIcon):
             except (ValueError, TypeError):
                 pass
 
-        # Context boyutu
+        # Context boyutu - sadece hazır seçenekler gösterilir, custom değer combobox'a eklenmez
         context_size = profile_data.get("context_size")
         if context_size is not None:
             try:
                 context_str = str(int(context_size))
+                # Combobox'ta bu değer var mı kontrol et
                 if self.context_size_combobox.findText(context_str) >= 0:
                     self.context_size_combobox.setCurrentText(context_str)
                 else:
-                    # Eğer listede yoksa, combobox'ın mevcut değerini güncelle
+                    # Eğer listede yoksa, combobox'ı sıfırla ve sadece hazır seçenekleri ekle
                     self.context_size_combobox.blockSignals(True)
-                    default_items = ["2048", "4096", "8192", "16384", "32768"]
-                    custom_items = []
-                    for i in range(self.context_size_combobox.count()):
-                        item_text = self.context_size_combobox.itemText(i)
-                        if item_text not in default_items:
-                            custom_items.append(item_text)
                     self.context_size_combobox.clear()
-                    for item in default_items:
+                    for item in ["16384", "32768", "65536", "131072", "262144"]:
                         self.context_size_combobox.addItem(item)
-                    for item in custom_items:
-                        if item != context_str:
-                            self.context_size_combobox.addItem(item)
-                    if context_str not in [item for i in range(self.context_size_combobox.count())]:
-                        self.context_size_combobox.addItem(context_str)
+                    # Profilin custom değerini ekle (çünkü profil tarafından yükleniyor)
+                    self.context_size_combobox.addItem(context_str)
                     self.context_size_combobox.setCurrentText(context_str)
                     self.context_size_combobox.blockSignals(False)
             except (ValueError, TypeError):
@@ -524,6 +524,25 @@ class LlamaTray(QSystemTrayIcon):
             self.apply_profile_values(profile_data)
             self.log(f"✓ Profil yüklendi: '{profile_name}'")
 
+    def update_selected_profile(self):
+        """Seçili profili güncelle - ekrandaki değerlerle mevcut profili yenile"""
+        profile_name = self.profile_combobox.currentText()
+        if not profile_name or profile_name == "(Profil yok)":
+            self.log("⚠ Güncellenecek profil seçilmedi.")
+            return
+
+        # Mevcut değerleri al
+        values = self.get_current_form_values()
+        
+        # Profili güncelle
+        profiles = self.load_profiles()
+        if profile_name in profiles:
+            profiles[profile_name] = values
+            self.save_profiles(profiles)
+            self.log(f"✓ Profil '{profile_name}' güncellendi.")
+        else:
+            self.log(f"⚠ Profil '{profile_name}' bulunamadı. Lütfen önce kaydedin.")
+
     def delete_selected_profile(self):
         """Seçili profili sil"""
         profile_name = self.profile_combobox.currentText()
@@ -574,15 +593,8 @@ class LlamaTray(QSystemTrayIcon):
                 json.dump(config, f, indent=2)
             self.log("✓ Ayarlar başarıyla kaydedildi.")
             
-            # Mevcut aktif profili de güncelle (eğer bir profil seçiliyse)
-            current_profile = self.profile_combobox.currentText()
-            if current_profile and current_profile != "(Profil yok)":
-                profiles = self.load_profiles()
-                if current_profile in profiles:
-                    values = self.get_current_form_values()
-                    profiles[current_profile] = values
-                    self.save_profiles(profiles)
-                    self.log(f"✓ Profil '{current_profile}' güncellendi.")
+            # Not: Mevcut aktif profil otomatik güncellenmedi.
+            # Kullanıcı profil değişikliklerini "Profili Güncelle" butonu ile manuel yapmalıdır.
         except PermissionError:
             self.log(f"❌ Hata: Ayarlar kaydedilemedi - Dosya yazma izni yok. (Dosya: {config_path})")
         except OSError as e:
@@ -611,17 +623,21 @@ class LlamaTray(QSystemTrayIcon):
                     except (ValueError, TypeError):
                         self.log("⚠ GPU katmanları değeri geçersiz, varsayılan kullanılıyor")
 
-                # Context boyutu
+                # Context boyutu - combobox'ta sadece hazır seçenekler görünür ama config'den gelen custom değer eklenir
                 context_size = config.get("context_size")
                 if context_size is not None:
                     try:
                         context_str = str(int(context_size))
+                        # Mevcut combobox'ta bu değer var mı kontrol et
                         if self.context_size_combobox.findText(context_str) >= 0:
                             self.context_size_combobox.setCurrentText(context_str)
                         else:
-                            # Eğer listede yoksa, combobox'ın mevcut değerini güncelle
+                            # Eğer listede yoksa, combobox'ı sıfırla ve sadece hazır seçenekleri ekle
                             self.context_size_combobox.blockSignals(True)
                             self.context_size_combobox.clear()
+                            for item in ["16384", "32768", "65536", "131072", "262144"]:
+                                self.context_size_combobox.addItem(item)
+                            # Config'den gelen custom değeri ekle
                             self.context_size_combobox.addItem(context_str)
                             self.context_size_combobox.setCurrentText(context_str)
                             self.context_size_combobox.blockSignals(False)
@@ -670,7 +686,8 @@ class LlamaTray(QSystemTrayIcon):
                 file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
                 self.log(f"✓ Model seçildi: {file_path}")
                 self.log(f"  Dosya boyutu: {file_size_mb:.2f} MB")
-                self.save_config()
+                # Not: Model seçildiğinde otomatik config güncellemesi devre dışı bırakıldı
+                # Kullanıcı istediğinde "Profili Güncelle" butonunu kullanarak manuel güncelleme yapabilir
         except Exception as e:
             self.log(f"❌ Hata: Model seçilirken hata - {type(e).__name__}: {e}")
 
