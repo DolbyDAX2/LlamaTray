@@ -329,13 +329,13 @@ class LlamaTray(QSystemTrayIcon):
         html_content.setWordWrap(True)
         html_content.setOpenExternalLinks(True)
         html_content.setText(
-            "<h3 style='color: #2980b9;'>🦙 LlamaTray v1.0.0</h3>"
+            "<h3 style='color: #2980b9;'>🦙 LlamaTray v1.0.2</h3>"
             "<p><b>Geliştirici:</b> Fatih Durdu</p>"
             "<p>Linux (Arch Linux / CachyOS) sistemler için minimalist, "
             "hafif ve zombi süreç önleme mekanizmasına sahip PyQt6 tabanlı "
             "Llama.cpp (llama-server) yönetim aracı.</p>"
             "<hr>"
-            "<p>🌐 <a href='https://fatihdurdu.xyz'>Kişisel Web Sitesi (fatihdurdu.xyz)</a></p>"
+            "<p>🌐 <a href='https://fatihdurdu.xyz/llamatray'>Kişisel Web Sitesi (fatihdurdu.xyz/llamatray)</a></p>"
             "<p>🐙 <a href='https://github.com/DolbyDAX2'>GitHub Profili (DolbyDAX2)</a></p>"
             "<p>📦 <a href='https://gitea.fatihdurdu.xyz/dolbydax2/LlamaTray'>Proje Gitea Deposu</a></p>"
         )
@@ -436,6 +436,25 @@ class LlamaTray(QSystemTrayIcon):
                 context_str = str(int(context_size))
                 if self.context_size_combobox.findText(context_str) >= 0:
                     self.context_size_combobox.setCurrentText(context_str)
+                else:
+                    # Eğer listede yoksa, combobox'ın mevcut değerini güncelle
+                    self.context_size_combobox.blockSignals(True)
+                    default_items = ["2048", "4096", "8192", "16384", "32768"]
+                    custom_items = []
+                    for i in range(self.context_size_combobox.count()):
+                        item_text = self.context_size_combobox.itemText(i)
+                        if item_text not in default_items:
+                            custom_items.append(item_text)
+                    self.context_size_combobox.clear()
+                    for item in default_items:
+                        self.context_size_combobox.addItem(item)
+                    for item in custom_items:
+                        if item != context_str:
+                            self.context_size_combobox.addItem(item)
+                    if context_str not in [item for i in range(self.context_size_combobox.count())]:
+                        self.context_size_combobox.addItem(context_str)
+                    self.context_size_combobox.setCurrentText(context_str)
+                    self.context_size_combobox.blockSignals(False)
             except (ValueError, TypeError):
                 pass
 
@@ -532,7 +551,7 @@ class LlamaTray(QSystemTrayIcon):
             self.log(f"✓ Profil silindi: '{profile_name}'")
 
     def save_config(self):
-        """Tüm ayarları kaydet"""
+        """Tüm ayarları kaydet - hem config.json hem de mevcut profil"""
         try:
             config_path = self.get_config_path()
             
@@ -554,6 +573,16 @@ class LlamaTray(QSystemTrayIcon):
             with open(config_path, "w") as f:
                 json.dump(config, f, indent=2)
             self.log("✓ Ayarlar başarıyla kaydedildi.")
+            
+            # Mevcut aktif profili de güncelle (eğer bir profil seçiliyse)
+            current_profile = self.profile_combobox.currentText()
+            if current_profile and current_profile != "(Profil yok)":
+                profiles = self.load_profiles()
+                if current_profile in profiles:
+                    values = self.get_current_form_values()
+                    profiles[current_profile] = values
+                    self.save_profiles(profiles)
+                    self.log(f"✓ Profil '{current_profile}' güncellendi.")
         except PermissionError:
             self.log(f"❌ Hata: Ayarlar kaydedilemedi - Dosya yazma izni yok. (Dosya: {config_path})")
         except OSError as e:
@@ -589,6 +618,13 @@ class LlamaTray(QSystemTrayIcon):
                         context_str = str(int(context_size))
                         if self.context_size_combobox.findText(context_str) >= 0:
                             self.context_size_combobox.setCurrentText(context_str)
+                        else:
+                            # Eğer listede yoksa, combobox'ın mevcut değerini güncelle
+                            self.context_size_combobox.blockSignals(True)
+                            self.context_size_combobox.clear()
+                            self.context_size_combobox.addItem(context_str)
+                            self.context_size_combobox.setCurrentText(context_str)
+                            self.context_size_combobox.blockSignals(False)
                     except (ValueError, TypeError):
                         self.log("⚠ Context boyutu değeri geçersiz, varsayılan kullanılıyor")
 
