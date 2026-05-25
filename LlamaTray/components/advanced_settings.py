@@ -31,7 +31,7 @@ class AdvancedSettingsWidget(QGroupBox):
         self.gpu_layers_spinbox = QSpinBox()
         self.gpu_layers_spinbox.setRange(0, 200)
         self.gpu_layers_spinbox.setValue(99)
-        self.gpu_layers_spinbox.setSuffix(self.get_translated("label_gpu_layers", "GPU Katmanları:").replace(":", "").strip())
+        self.gpu_layers_spinbox.setSuffix("")  # Suffix kaldırıldı, sadece label'da "GPU Katmanları:" görünüyor
         gpu_row.addWidget(self.gpu_layers_label)
         gpu_row.addWidget(self.gpu_layers_spinbox)
         
