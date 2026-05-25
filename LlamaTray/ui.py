@@ -628,8 +628,8 @@ class LlamaTray:
                 if gpu_layers is not None:
                     try:
                         self.advanced_settings.gpu_layers_spinbox.setValue(int(gpu_layers))
-                    except (ValueError, TypeError):
-                        self.log(self.get_translated("log_model_load_error", "⚠ GPU katmanları değeri geçersiz, varsayılan kullanılıyor"))
+                    except (ValueError, TypeError) as e:
+                        self.log(f"⚠ GPU katmanları değeri geçersiz ({gpu_layers}, tip: {type(gpu_layers).__name__}), varsayılan 99 kullanılıyor")
                 
                 # Context boyutu - combobox'ta sadece hazır seçenekler görünür ama config'den gelen custom değer eklenir
                 context_size = config.get("context_size")
