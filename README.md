@@ -98,13 +98,13 @@ LlamaTray/
 ### 🖱️ Usage
 
 1. Launch LlamaTray from your application menu or terminal (`LlamaTray`).
-2. Click **"Model Seç" (Browse)** to select a `.gguf` model file.
+2. Click **"Browse"** to select a `.gguf` model file.
 3. (Optional) Adjust advanced settings: GPU layers, context size, port, extra parameters.
 4. **Profile Management:** Save your current configuration as a named profile for quick switching between different model setups.
-5. Click **"Sunucuyu Başlat" (Start Server)** to launch `llama-server`.
+5. Click **"Start Server"** to launch `llama-server`.
 6. Monitor CPU, RAM, GPU, VRAM usage in real-time.
-7. Click **"Sunucuyu Durdur" (Stop Server)** or close the window to terminate — no zombie processes left behind.
-8. Click **"Web Arayüzünü Aç"** to open the llama.cpp web UI in your browser.
+7. Click **"Stop Server"** or close the window to terminate — no zombie processes left behind.
+8. Click **"Open Web UI"** to open the llama.cpp web UI in your browser.
 
 > **Note:** Closing the window automatically terminates the llama-server process. The application also cleans up on crash via the built-in crash handler.
 
