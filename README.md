@@ -199,20 +199,34 @@ makepkg -si
 
 ```text
 LlamaTray/
-├── LlamaTray/                 # Ana Python Paket Dizini
-│   ├── __init__.py            # Paket başlatıcı
-│   ├── __main__.py            # `python -m LlamaTray` giriş noktası
-│   ├── main.py                # Crash handler ile uygulama giriş noktası
-│   ├── ui.py                  # PyQt6 arayüzü, sistem tepsisi, profil yönetimi
-│   ├── server.py              # Llama-server süreç yöneticisi (QProcess)
-│   ├── monitor.py             # Donanım metrik toplama modülü
-│   └── assets/                # Uygulama ikonları ve grafikleri
-│       ├── icon.png           # Varsayılan gümüş lama ikonu
-│       └── green_icon.png     # Yeşil lama ikonu (yedek)
-├── arch-package/              # Arch Linux PKGBUILD ve derleme çıktıları
-│   └── PKGBUILD               # `llamatray` paketi için derleme betiği
+├── .gitignore                 # Git ignore kuralları
+├── README.md                  # Çok dilli dokümantasyon (bu dosya)
 ├── requirements.txt           # Python bağımlılıkları
-└── README.md                  # Çok dilli dokümantasyon (bu dosya)
+├── arch-package/              # Arch Linux PKGBUILD ve derleme çıktıları
+│   ├── PKGBUILD               # `llamatray` paketi için derleme betiği
+│   └── llamatray-1.0.0.tar.gz # Ön hazırlanmış paket arşivi
+└── LlamaTray/                 # Ana Python Paket Dizini
+    ├── __init__.py            # Paket başlatıcı
+    ├── __main__.py            # `python -m LlamaTray` giriş noktası
+    ├── main.py                # Crash handler ile uygulama giriş noktası
+    ├── ui.py                  # PyQt6 arayüzü, sistem tepsisi entegrasyonu
+    ├── server.py              # Llama-server süreç yöneticisi (QProcess)
+    ├── monitor.py             # Donanım metrik toplama modülü
+    ├── translations.json      # Yerelleştirme çevirileri
+    ├── ui_utils.py            # UI yardımcı araçları
+    ├── ui_config_fix.txt      # UI yapılandırma notları
+    ├── green_icon.png         # Yeşil lama ikonu
+    ├── icon.png               # Varsayılan gümüş lama ikonu
+    ├── assets/                # Uygulama ikonları ve grafikleri
+    │   ├── icon.png           # Varsayılan gümüş lama ikonu
+    │   └── green_icon.png     # Yeşil lama ikonu (yedek)
+    └── components/            # UI Bileşenleri Dizini
+        ├── __init__.py        # Bileşenler paket başlatıcı
+        ├── main_window.py     # Ana uygulama penceresi
+        ├── about_dialog.py    # Hakkında/kredi diyalog penceresi
+        ├── advanced_settings.py  # Gelişmiş ayarlar diyalogu
+        ├── monitor_widget.py  # Gerçek zamanlı kaynak izleme bileşeni
+        └── profile_manager.py # Profil kaydet/yükle/sil yöneticisi
 ```
 
 ### 🖱️ Kullanım
