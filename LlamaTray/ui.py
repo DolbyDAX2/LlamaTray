@@ -842,7 +842,7 @@ class LlamaTray:
     def update_system_monitor(self):
         """Sistem monitörünü güncelle - dil desteği ile"""
         if hasattr(self, 'monitor_widget'):
-            self.monitor_widget.update_monitor()
+            self.monitor_widget.update_resources()
     
     def log(self, message):
         """Log mesajı ekle - dil desteği ile"""
