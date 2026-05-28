@@ -20,7 +20,7 @@ if not os.path.exists(ICON_PATH):
     print(f"!!! DIKKAT: İkon bulunamadi, aranan konum: {ICON_PATH}")
 
 
-# Global referans - atexit için
+# Global referans - atexit için (ui.py ile senkronize)
 _tray_instance = None
 
 
@@ -36,7 +36,11 @@ def load_translations():
 
 def cleanup_tray_icon():
     """Sistem tepsisindeki ikonları temizle - uygulama crash olsa bile çalıştırılmalı"""
+    # ui.py'deki _tray_instance'ı kullan (senkronize)
+    import sys
     global _tray_instance
+    if 'LlamaTray.ui' in sys.modules:
+        _tray_instance = sys.modules['LlamaTray.ui']._tray_instance
     try:
         if _tray_instance is not None:
             # Tray ikonunu gizle (Wayland/KDE uyumluluğu)

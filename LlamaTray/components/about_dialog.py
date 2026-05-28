@@ -99,7 +99,7 @@ class AboutDialog(QDialog):
             # Hata durumunda varsayılan değerler
             tr = {
                 'app_name': '🦙 LlamaTray',
-                'version': 'v1.0.2',
+                'version': 'v1.1.1',
                 'developer': 'Geliştirici: Fatih Durdu',
                 'description': 'Linux (Arch Linux / CachyOS) sistemler için minimalist, hafif ve zombi süreç önleme mekanizmasına sahip PyQt6 tabanlı Llama.cpp (llama-server) yönetim aracı.',
                 'website': 'Kişisel Web Sitesi',
@@ -108,7 +108,7 @@ class AboutDialog(QDialog):
             }
         
         return (
-            f"<h3 style='color: #2980b9;'>{tr.get('app_name', '🦙 LlamaTray')} {tr.get('version', 'v1.0.2')}</h3>"
+            f"<h3 style='color: #2980b9;'>{tr.get('app_name', '🦙 LlamaTray')} {tr.get('version', 'v1.1.1')}</h3>"
             f"<p><b>{tr.get('developer', 'Geliştirici: Fatih Durdu')}</b></p>"
             f"<p>{tr.get('description', 'Linux (Arch Linux / CachyOS) sistemler için minimalist, hafif ve zombi süreç önleme mekanizmasına sahip PyQt6 tabanlı Llama.cpp (llama-server) yönetim aracı.')}</p>"
             "<hr>"
