@@ -26,16 +26,20 @@ def is_port_in_use(port):
 def cleanup_old_processes(port):
     """Eski llama-server süreçlerini temizle ve port'u boşalt"""
     try:
-        # Önce sistemdeki tüm llama-server'ları zorla sonlandır
-        os.system("killall -9 llama-server 2>/dev/null")
+        # Önce sistemdeki tüm llama-server'ları zorla sonlandır (güvenlik için shell=False)
+        subprocess.run(
+            ["killall", "-9", "llama-server"],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
         
         # Port'u kontrol et ve gerekirse force close yap
         if is_port_in_use(port):
             try:
-                # lsof ile port kullanıcısını bul ve sonlandır
+                # lsof ile port kullanıcısını bul ve sonlandır (shell=False güvenlik)
                 result = subprocess.run(
-                    f"lsof -ti:{port} | xargs kill -9",
-                    shell=True,
+                    ["bash", "-c", f"lsof -ti:{port} | xargs kill -9"],
                     capture_output=True,
                     text=True,
                     timeout=2
@@ -283,12 +287,12 @@ class LlamaServerManager(QProcess):
             self.terminate()
             self.log("📤 SIGTERM sinyali gönderildi...")
             
-            # 2. 3 saniye bekle
+            # 2. 3 saniye bekle (timeout mekanizması)
             if not self.waitForFinished(3000):
                 self.log("⚠ Sunucu nazikçe kapanmadı, SIGKILL gönderiliyor...")
                 # 3. Hala kapanmadıysa kill (SIGKILL) ile zorla kapat
                 self.kill()
-                if not self.waitForFinished(2000):
+                if not self.waitForFinished(5000):
                     self.log("⚠ Uyarı: Sunucu zorla kapatılamadı, sistem düzeyinde temizlik yapılıyor...")
             else:
                 self.log("✓ Sunucu başarıyla sonlandırıldı.")
@@ -296,11 +300,14 @@ class LlamaServerManager(QProcess):
             self.log(f"⚠ Temizlik hatası: {e}")
         finally:
             self.server_running = False
-            # Final cleanup - tüm eski süreçleri zorla kapat
+            # Final cleanup - sadece kendi PID'mi sonlandır (zombi süreç önleme)
             try:
-                os.system("killall -9 llama-server 2>/dev/null")
-            except Exception:
-                pass
+                pid = self.processId()
+                if pid > 0:
+                    os.kill(pid, signal.SIGKILL)
+                    self.log(f"✓ Kendi sürecim sonlandırıldı (PID: {pid})")
+            except Exception as e:
+                self.log(f"⚠ PID sonlandırma hatası: {e}")
 
     def stop_server(self):
         """Sunucuyu durdur"""

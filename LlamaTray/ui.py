@@ -30,8 +30,8 @@ from .components import (
 )
 
 
-# Global referans - atexit için
-_global_tray_instance = None
+# Global referans - atexit için (tek global değişken)
+_tray_instance = None
 
 
 class LlamaTray:
@@ -39,8 +39,8 @@ class LlamaTray:
     
     def __init__(self):
         """Uygulama başlatıcı"""
-        global _global_tray_instance
-        _global_tray_instance = self
+        global _tray_instance
+        _tray_instance = self
         
         # Translation desteği
         self.translations = load_translations()
@@ -75,6 +75,7 @@ class LlamaTray:
         # Timer (sadece sistem monitörü için)
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_system_monitor)
+        self.timer.start(1000)  # 1 saniye aralıklarla güncelle
         
         self.model_path = None
         
@@ -318,7 +319,7 @@ class LlamaTray:
         
         # Pencere başlığı
         if hasattr(self, 'window'):
-            self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {tr('version', 'v1.0.2')}")
+            self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {tr('version', 'v1.1.1')}")
     
     def show_about_dialog(self):
         """Hakkında penceresini göster - dil desteği ile"""
@@ -426,7 +427,9 @@ class LlamaTray:
         context_size = profile_data.get("context_size")
         if context_size is not None:
             try:
-                context_str = str(int(context_size))
+                # Overflow kontrolü ve değer sınırlaması (512-1000000 arası)
+                context_size = min(max(int(context_size), 512), 1000000)
+                context_str = str(context_size)
                 # Combobox'ta bu değer var mı kontrol et
                 if self.advanced_settings.context_size_combobox.findText(context_str) >= 0:
                     self.advanced_settings.context_size_combobox.setCurrentText(context_str)
