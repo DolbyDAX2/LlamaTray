@@ -68,7 +68,6 @@ LlamaTray/
 ├── .gitignore                 # Git ignore rules
 ├── README.md                  # Multi-language documentation (this file)
 ├── requirements.txt           # Python dependencies
-├── HATA_RAPORU.md             # Bug report & analysis (Turkish)
 ├── arch-package/              # Arch Linux PKGBUILD and build artifacts
 │   ├── PKGBUILD               # Package build script for `llamatray`
 │   └── llamatray-1.1.2.tar.gz # Pre-built package archive
@@ -199,7 +198,6 @@ LlamaTray/
 ├── .gitignore                 # Git ignore kuralları
 ├── README.md                  # Çok dilli dokümantasyon (bu dosya)
 ├── requirements.txt           # Python bağımlılıkları
-├── HATA_RAPORU.md             # Hata raporu ve analiz
 ├── arch-package/              # Arch Linux PKGBUILD ve derleme çıktıları
 │   ├── PKGBUILD               # `llamatray` paketi için derleme betiği
 │   └── llamatray-1.1.2.tar.gz # Ön hazırlanmış paket arşivi
