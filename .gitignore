@@ -28,3 +28,5 @@ arch-package/LlamaTray/config
 arch-package/LlamaTray/description
 arch-package/LlamaTray/FETCH_HEAD
 arch-package/LlamaTray/packed-refs
+# Hata raporu - yerel analiz dosyasi, push edilmez
+HATA_RAPORU.md
