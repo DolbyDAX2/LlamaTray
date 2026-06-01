@@ -68,29 +68,25 @@ LlamaTray/
 ├── .gitignore                 # Git ignore rules
 ├── README.md                  # Multi-language documentation (this file)
 ├── requirements.txt           # Python dependencies
+├── HATA_RAPORU.md             # Bug report & analysis (Turkish)
 ├── arch-package/              # Arch Linux PKGBUILD and build artifacts
 │   ├── PKGBUILD               # Package build script for `llamatray`
-│   └── llamatray-1.0.0.tar.gz # Pre-built package archive
+│   └── llamatray-1.1.2.tar.gz # Pre-built package archive
 └── LlamaTray/                 # Main Python Package Directory
     ├── __init__.py            # Package initializer
     ├── __main__.py            # Entry point for `python -m LlamaTray`
     ├── main.py                # Application entry point with crash handler
     ├── ui.py                  # PyQt6 UI, system tray integration
     ├── server.py              # Llama-server process manager (QProcess)
-    ├── monitor.py             # Hardware metric polling module
-    ├── translations.json      # Localization translations
-    ├── ui_utils.py            # UI helper utilities
-    ├── ui_config_fix.txt      # UI configuration notes
-    ├── green_icon.png         # Green llama icon
-    ├── icon.png               # Default silver llama icon
+    ├── monitor.py             # Hardware metric polling module (CPU/RAM/GPU/VRAM)
+    ├── translations.json      # Localization translations (TR/EN)
+    ├── ui_utils.py            # UI helper utilities (cleanup, translation loader)
     ├── assets/                # App icons and graphics
-    │   ├── icon.png           # Default silver llama icon
-    │   └── green_icon.png     # Green llama icon (reserved)
+    │   └── icon.png           # Default llama icon
     └── components/            # UI Components Directory
         ├── __init__.py        # Components package initializer
-        ├── main_window.py     # Main application window
-        ├── about_dialog.py    # About/credits dialog
-        ├── advanced_settings.py  # Advanced settings dialog
+        ├── about_dialog.py    # About/credits dialog with language support
+        ├── advanced_settings.py  # Advanced settings panel
         ├── monitor_widget.py  # Real-time resource monitor widget
         └── profile_manager.py # Profile save/load/delete manager
 ```
@@ -123,7 +119,8 @@ LlamaTray/
 
 - **PyQt6** — GUI framework
 - **psutil** — CPU/RAM monitoring
-- **pynvml** — NVIDIA GPU monitoring (optional, falls back to nvidia-smi)
+- **nvidia-ml-py** — NVIDIA GPU monitoring (optional, falls back to pynvml or nvidia-smi)
+- **requests** — HTTP API shutdown support (optional)
 - **llama-server** — Part of [llama.cpp](https://github.com/ggerganov/llama.cpp)
 
 ### 🔗 Links
@@ -202,29 +199,25 @@ LlamaTray/
 ├── .gitignore                 # Git ignore kuralları
 ├── README.md                  # Çok dilli dokümantasyon (bu dosya)
 ├── requirements.txt           # Python bağımlılıkları
+├── HATA_RAPORU.md             # Hata raporu ve analiz
 ├── arch-package/              # Arch Linux PKGBUILD ve derleme çıktıları
 │   ├── PKGBUILD               # `llamatray` paketi için derleme betiği
-│   └── llamatray-1.0.0.tar.gz # Ön hazırlanmış paket arşivi
+│   └── llamatray-1.1.2.tar.gz # Ön hazırlanmış paket arşivi
 └── LlamaTray/                 # Ana Python Paket Dizini
     ├── __init__.py            # Paket başlatıcı
     ├── __main__.py            # `python -m LlamaTray` giriş noktası
     ├── main.py                # Crash handler ile uygulama giriş noktası
     ├── ui.py                  # PyQt6 arayüzü, sistem tepsisi entegrasyonu
     ├── server.py              # Llama-server süreç yöneticisi (QProcess)
-    ├── monitor.py             # Donanım metrik toplama modülü
-    ├── translations.json      # Yerelleştirme çevirileri
-    ├── ui_utils.py            # UI yardımcı araçları
-    ├── ui_config_fix.txt      # UI yapılandırma notları
-    ├── green_icon.png         # Yeşil lama ikonu
-    ├── icon.png               # Varsayılan gümüş lama ikonu
+    ├── monitor.py             # Donanım metrik toplama modülü (CPU/RAM/GPU/VRAM)
+    ├── translations.json      # Yerelleştirme çevirileri (TR/EN)
+    ├── ui_utils.py            # UI yardımcı araçları (temizlik, çeviri yükleyici)
     ├── assets/                # Uygulama ikonları ve grafikleri
-    │   ├── icon.png           # Varsayılan gümüş lama ikonu
-    │   └── green_icon.png     # Yeşil lama ikonu (yedek)
+    │   └── icon.png           # Varsayılan lama ikonu
     └── components/            # UI Bileşenleri Dizini
         ├── __init__.py        # Bileşenler paket başlatıcı
-        ├── main_window.py     # Ana uygulama penceresi
-        ├── about_dialog.py    # Hakkında/kredi diyalog penceresi
-        ├── advanced_settings.py  # Gelişmiş ayarlar diyalogu
+        ├── about_dialog.py    # Hakkında/kredi diyalog penceresi (dil desteği ile)
+        ├── advanced_settings.py  # Gelişmiş ayarlar paneli
         ├── monitor_widget.py  # Gerçek zamanlı kaynak izleme bileşeni
         └── profile_manager.py # Profil kaydet/yükle/sil yöneticisi
 ```
@@ -257,7 +250,8 @@ LlamaTray/
 
 - **PyQt6** — GUI framework
 - **psutil** — CPU/RAM izleme
-- **pynvml** — NVIDIA GPU izleme (isteğe bağlı, nvidia-smi'ye düşer)
+- **nvidia-ml-py** — NVIDIA GPU izleme (isteğe bağlı, pynvml veya nvidia-smi'ye düşer)
+- **requests** — HTTP API ile kapatma desteği (isteğe bağlı)
 - **llama-server** — [llama.cpp](https://github.com/ggerganov/llama.cpp) parçası
 
 ### 🔗 Bağlantılar

@@ -6,7 +6,6 @@ llama-server sürecini başlatma, durdurma ve yönetme işlemlerini içerir.
 import os
 import subprocess
 import shlex
-import signal
 import socket
 import time
 from PyQt6.QtCore import QProcess, QProcessEnvironment
@@ -25,29 +24,18 @@ def is_port_in_use(port):
 
 def cleanup_old_processes(port):
     """Eski llama-server süreçlerini temizle ve port'u boşalt"""
-    try:
-        # Önce sistemdeki tüm llama-server'ları zorla sonlandır (güvenlik için shell=False)
-        subprocess.run(
-            ["killall", "-9", "llama-server"],
-            capture_output=True,
-            text=True,
-            timeout=2
-        )
-        
-        # Port'u kontrol et ve gerekirse force close yap
-        if is_port_in_use(port):
-            try:
-                # lsof ile port kullanıcısını bul ve sonlandır (shell=False güvenlik)
-                result = subprocess.run(
-                    ["bash", "-c", f"lsof -ti:{port} | xargs kill -9"],
-                    capture_output=True,
-                    text=True,
-                    timeout=2
-                )
-            except Exception:
-                pass
-    except Exception:
-        pass
+    # Port'u kontrol et ve gerekirse force close yap
+    if is_port_in_use(port):
+        try:
+            # lsof ile port kullanıcısını bul ve sonlandır (shell=False güvenlik)
+            result = subprocess.run(
+                ["bash", "-c", f"lsof -ti:{port} | xargs kill -9"],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+        except Exception:
+            pass
 
 
 class LlamaServerManager(QProcess):
@@ -83,30 +71,30 @@ class LlamaServerManager(QProcess):
                 if message:
                     self.log(message)
         except Exception as e:
-            self.log(f"Çıktı okuma hatası: {e}")
+            self.log(f"⚠ Output read error: {e}")
 
     def on_started(self):
         """Process başarıyla başlatıldığında"""
         self.server_running = True
-        self.log(f"✓ Sunucu başarıyla başlatıldı (PID: {self.processId()})")
+        self.log(f"✓ Server started successfully (PID: {self.processId()})")
         self.log("=" * 60)
 
     def on_finished(self, exit_code, exit_status):
         """Process bittiğinde"""
-        self.log(f"⚠ Sunucu kapandı (Exit Code: {exit_code})")
+        self.log(f"⚠ Server closed (Exit Code: {exit_code})")
         self.server_running = False
 
     def on_error(self, error):
         """Process başlatılırken hata oluştuğunda"""
         error_messages = {
-            QProcess.ProcessError.FailedToStart: "❌ Hata: llama-server başlatılamadı. Dosya bulunamadı veya çalıştırma izni yok.",
-            QProcess.ProcessError.Crashed: "❌ Hata: llama-server çöktü.",
-            QProcess.ProcessError.Timedout: "❌ Hata: llama-server başlatma timeout'a uğradı.",
-            QProcess.ProcessError.WriteError: "❌ Hata: Sunucuya veri yazarken hata oluştu.",
-            QProcess.ProcessError.ReadError: "❌ Hata: Sunucudan veri okurken hata oluştu.",
-            QProcess.ProcessError.UnknownError: "❌ Hata: Bilinmeyen hata oluştu.",
+            QProcess.ProcessError.FailedToStart: "❌ Error: llama-server could not be started. File not found or no execute permission.",
+            QProcess.ProcessError.Crashed: "❌ Error: llama-server crashed.",
+            QProcess.ProcessError.Timedout: "❌ Error: llama-server startup timed out.",
+            QProcess.ProcessError.WriteError: "❌ Error: Failed to write data to server.",
+            QProcess.ProcessError.ReadError: "❌ Error: Failed to read data from server.",
+            QProcess.ProcessError.UnknownError: "❌ Error: Unknown error occurred.",
         }
-        error_msg = error_messages.get(error, f"❌ Hata: QProcess hatası ({error})")
+        error_msg = error_messages.get(error, f"❌ Error: QProcess error ({error})")
         self.log(error_msg)
         self.server_running = False
 
@@ -124,10 +112,10 @@ class LlamaServerManager(QProcess):
             )
             if result.returncode == 0:
                 llama_server_cmd = result.stdout.strip()
-                self.log(f"✓ llama-server bulundu: {llama_server_cmd}")
+                self.log(f"✓ llama-server found: {llama_server_cmd}")
                 return llama_server_cmd
         except Exception as e:
-            self.log(f"⚠ PATH araması başarısız: {e}")
+            self.log(f"⚠ PATH search failed: {e}")
 
         # Bulunamadıysa yaygın konumları dene
         common_paths = [
@@ -140,11 +128,11 @@ class LlamaServerManager(QProcess):
         
         for path in common_paths:
             if os.path.exists(path) and os.access(path, os.X_OK):
-                self.log(f"✓ llama-server bulundu: {path}")
+                self.log(f"✓ llama-server found: {path}")
                 return path
 
         # Son çare olarak llama-server'ı doğrudan dene
-        self.log("⚠ Sistem komutlarında llama-server aranıyor...")
+        self.log("⚠ Looking for llama-server in system commands...")
         return "llama-server"
 
     def start_server(self, model_path, gpu_layers=99, context_size=8192, port=8080, extra_params=""):
@@ -160,51 +148,51 @@ class LlamaServerManager(QProcess):
         """
         # Ön kontroller
         if self.server_running:
-            self.log("⚠ Sunucu zaten çalışıyor.")
+            self.log("⚠ Server is already running.")
             return False
 
         if not model_path:
-            self.log("❌ Hata: Lütfen önce bir model dosyası seçin.")
+            self.log("❌ Error: Please select a model file first.")
             return False
 
         if not os.path.exists(model_path):
-            self.log(f"❌ Hata: Model dosyası bulunamadı: {model_path}")
+            self.log(f"❌ Error: Model file not found: {model_path}")
             return False
 
         # Model boyutu kontrol et
         try:
             model_size_mb = os.path.getsize(model_path) / (1024 * 1024)
-            self.log(f"📦 Model boyutu: {model_size_mb:.2f} MB")
+            self.log(f"📦 Model size: {model_size_mb:.2f} MB")
             if model_size_mb < 100:
-                self.log(f"⚠ Uyarı: Model dosyası çok küçük görünüyor ({model_size_mb:.2f} MB). Geçerli bir GGUF dosyası mı?")
+                self.log(f"⚠ Warning: Model file seems very small ({model_size_mb:.2f} MB). Is it a valid GGUF file?")
         except Exception as e:
-            self.log(f"⚠ Model boyutu kontrol edilemedi: {e}")
+            self.log(f"⚠ Could not check model size: {e}")
 
         # Context size validation
         try:
             context_size = int(context_size)
             if context_size < 512 or context_size > 1000000:
-                self.log(f"❌ Hata: Context size geçersiz ({context_size}). 512 ile 1000000 arasında olmalı.")
+                self.log(f"❌ Error: Context size invalid ({context_size}). Must be between 512 and 1000000.")
                 return False
         except ValueError:
-            self.log(f"❌ Hata: Context size sayı değil: {context_size}")
+            self.log(f"❌ Error: Context size is not a number: {context_size}")
             return False
 
         # Port validation
         if not (1024 <= port <= 65535):
-            self.log(f"❌ Hata: Port geçersiz ({port}). 1024 ile 65535 arasında olmalı.")
+            self.log(f"❌ Error: Port invalid ({port}). Must be between 1024 and 65535.")
             return False
 
         # Öncesi: Eski zombi süreçleri temizle
-        self.log("🧹 Eski llama-server süreçleri ve port kontrolü yapılıyor...")
+        self.log("🧹 Cleaning up old llama-server processes and checking ports...")
         cleanup_old_processes(port)
         
         # Port'un boş olup olmadığını kontrol et (temizlik sonrası)
         time.sleep(1)
         if is_port_in_use(port):
-            self.log(f"❌ Hata: Port {port} temizlenemedi. Başka bir port deneyin veya lsof ile kontrol edin.")
+            self.log(f"❌ Error: Port {port} could not be cleared. Try a different port or check with lsof.")
             return False
-        self.log(f"✓ Port {port} boş.")
+        self.log(f"✓ Port {port} is free.")
         
         # Port ve host'u kaydet
         self.port = port
@@ -212,21 +200,21 @@ class LlamaServerManager(QProcess):
 
         llama_server_cmd = self.find_llama_server()
         if not llama_server_cmd:
-            self.log("❌ Hata: llama-server bulunamadı. llama.cpp'in kurulu olduğundan emin olun.")
+            self.log("❌ Error: llama-server not found. Make sure llama.cpp is installed.")
             return False
         # Bulunan komutun çalıştırılabilir olduğunu kontrol et
         if os.path.isabs(llama_server_cmd) and not os.access(llama_server_cmd, os.X_OK):
-            self.log(f"❌ Hata: {llama_server_cmd} çalıştırılabilir değil.")
+            self.log(f"❌ Error: {llama_server_cmd} is not executable.")
             return False
         if not os.path.isabs(llama_server_cmd):
             # Göreceli yol (PATH'te aranacak) - varlığını kontrol et
             try:
                 result = subprocess.run(["which", llama_server_cmd], capture_output=True, text=True, timeout=2)
                 if result.returncode != 0:
-                    self.log(f"❌ Hata: '{llama_server_cmd}' PATH'te bulunamadı. llama.cpp'in kurulu olduğundan emin olun.")
+                    self.log(f"❌ Error: '{llama_server_cmd}' not found in PATH. Make sure llama.cpp is installed.")
                     return False
             except Exception:
-                self.log(f"❌ Hata: '{llama_server_cmd}' aranırken hata oluştu.")
+                self.log(f"❌ Error: Error searching for '{llama_server_cmd}'.")
                 return False
 
         # Komutu oluştur
@@ -241,17 +229,13 @@ class LlamaServerManager(QProcess):
             if extra_params:
                 try:
                     extra_args = shlex.split(extra_params)
-                    # Parametreleri validate et (temel kontrol)
-                    for arg in extra_args:
-                        if not arg.startswith("-"):
-                            self.log(f"⚠ Uyarı: '{arg}' geçerli bir parametre değil (- ile başlamalı)")
                     args.extend(extra_args)
-                    self.log(f"📝 Ek parametreler eklendi: {' '.join(extra_args)}")
+                    self.log(f"📝 Extra parameters added: {' '.join(extra_args)}")
                 except ValueError as e:
-                    self.log(f"❌ Hata: Ek parametreler ayrıştırılamadı: {e}. Örn: -t 8 --flash-attn")
+                    self.log(f"❌ Error: Could not parse extra parameters: {e}. E.g.: -t 8 --flash-attn")
                     return False
 
-        self.log(f"🚀 Sunucu başlatılıyor: {llama_server_cmd} {' '.join(args)}")
+        self.log(f"🚀 Starting server: {llama_server_cmd} {' '.join(args)}")
         self.log("=" * 60)
 
         try:
@@ -264,15 +248,15 @@ class LlamaServerManager(QProcess):
             
             # Başlatma başarısı - hemen True yapma, sinyalleri bekle
             # QProcess başlatıldı, ama gerçekten başladı mı diye on_started sinyali bekleyecek
-            self.log("⏳ Sunucu başlatılma işlemi devam ediyor...")
+            self.log("⏳ Server startup in progress...")
             return True
             
         except FileNotFoundError as e:
-            self.log(f"❌ Hata: llama-server bulunamadı: {e}")
+            self.log(f"❌ Error: llama-server not found: {e}")
             self.server_running = False
             return False
         except Exception as e:
-            self.log(f"❌ Hata: Sunucu başlatılamadı: {type(e).__name__}: {e}")
+            self.log(f"❌ Error: Server could not be started: {type(e).__name__}: {e}")
             self.server_running = False
             return False
 
@@ -281,53 +265,45 @@ class LlamaServerManager(QProcess):
         if not self.server_running:
             return
 
-        self.log("🛑 Sunucu temizleme başlatılıyor...")
+        self.log("🛑 Starting server cleanup...")
         try:
             # 1. Önce terminate (SIGTERM) gönder
             self.terminate()
-            self.log("📤 SIGTERM sinyali gönderildi...")
+            self.log("📤 SIGTERM signal sent...")
             
             # 2. 3 saniye bekle (timeout mekanizması)
             if not self.waitForFinished(3000):
-                self.log("⚠ Sunucu nazikçe kapanmadı, SIGKILL gönderiliyor...")
+                self.log("⚠ Server did not shut down gracefully, sending SIGKILL...")
                 # 3. Hala kapanmadıysa kill (SIGKILL) ile zorla kapat
                 self.kill()
                 if not self.waitForFinished(5000):
-                    self.log("⚠ Uyarı: Sunucu zorla kapatılamadı, sistem düzeyinde temizlik yapılıyor...")
+                    self.log("⚠ Warning: Server could not be forcefully terminated, performing system-level cleanup...")
             else:
-                self.log("✓ Sunucu başarıyla sonlandırıldı.")
+                self.log("✓ Server terminated successfully.")
         except Exception as e:
-            self.log(f"⚠ Temizlik hatası: {e}")
+            self.log(f"⚠ Cleanup error: {e}")
         finally:
             self.server_running = False
-            # Final cleanup - sadece kendi PID'mi sonlandır (zombi süreç önleme)
-            try:
-                pid = self.processId()
-                if pid > 0:
-                    os.kill(pid, signal.SIGKILL)
-                    self.log(f"✓ Kendi sürecim sonlandırıldı (PID: {pid})")
-            except Exception as e:
-                self.log(f"⚠ PID sonlandırma hatası: {e}")
 
     def stop_server(self):
         """Sunucuyu durdur"""
         if not self.server_running:
-            self.log("ℹ Sunucu zaten durmuş.")
+            self.log("ℹ Server is already stopped.")
             return
 
-        self.log("🛑 Sunucu durdurma isteği...")
+        self.log("🛑 Sending server stop request...")
         
         # 1. Önce HTTP API üzerinden nazikçe kapatmayı dene (llama-server /exit endpoint)
         try:
             import requests
             url = f"http://{self.host}:{self.port}/exit"
-            self.log(f"📤 HTTP API ile kapatma isteği gönderiliyor: {url}")
+            self.log(f"📤 Sending HTTP API shutdown request: {url}")
             response = requests.post(url, timeout=2)
-            self.log(f"✓ HTTP API kapatma isteği gönderildi (Yanıt: {response.status_code})")
+            self.log(f"✓ HTTP API shutdown request sent (Response: {response.status_code})")
         except ImportError:
-            self.log("⚠ requests kütüphanesi yüklü değil, HTTP API kapatma atlanıyor.")
+            self.log("⚠ requests library not installed, skipping HTTP API shutdown.")
         except Exception as e:
-            self.log(f"⚠ HTTP API kapatma başarısız: {e}")
+            self.log(f"⚠ HTTP API shutdown failed: {e}")
 
         # 2. Süreç grubunu temizle (terminate + wait)
         self.cleanup_server_process()
@@ -335,7 +311,7 @@ class LlamaServerManager(QProcess):
         # 3. Son kontrol: port hala açık mı?
         time.sleep(1)
         if is_port_in_use(self.port):
-            self.log(f"⚠ Port {self.port} hala açık, zorla temizleniyor...")
+            self.log(f"⚠ Port {self.port} is still in use, forcefully cleaning...")
             cleanup_old_processes(self.port)
         
         self.server_running = False

@@ -63,7 +63,10 @@ class LlamaTray:
         # Ana pencereyi başlat
         self._init_main_window()
         
-        # Tüm ayarları yükle
+        # Model yolu başlangıçta None - load_config() tarafından doldurulabilir
+        self.model_path = None
+        
+        # Tüm ayarları yükle (model_path, gpu_layers, context_size vb.)
         self.load_config()
         
         # Profil listesini yükle
@@ -76,8 +79,6 @@ class LlamaTray:
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_system_monitor)
         self.timer.start(1000)  # 1 saniye aralıklarla güncelle
-        
-        self.model_path = None
         
         # QApplication signals bağla - uygulama çıkışında temizlik yap
         try:
@@ -123,7 +124,6 @@ class LlamaTray:
     
     def _init_main_window(self):
         """Ana pencereyi başlat"""
-        from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton, QFrame, QLabel, QProgressBar
         
         # Log penceresi
         self.log_window = QTextEdit()
@@ -190,12 +190,13 @@ class LlamaTray:
         
         self.layout.addLayout(self.bottom_container)
         
+        from PyQt6.QtWidgets import QMainWindow
         # Ana pencere
         self.window = QMainWindow()
         central_widget = QWidget()
         central_widget.setLayout(self.layout)
         self.window.setCentralWidget(central_widget)
-        self.window.setWindowTitle(f"{self.get_translated('app_name', '🦙 LlamaTray')} {self.get_translated('version', 'v1.0.2')}")
+        self.window.setWindowTitle(f"{self.get_translated('app_name', '🦙 LlamaTray')} {self.get_translated('version', 'v1.1.2')}")
         self.window.setGeometry(100, 100, 450, 650)
         
         # Pencere kapatıldığında (X butonu) sunucuyu otomatik durdur
@@ -269,22 +270,6 @@ class LlamaTray:
         if hasattr(self, 'about_button'):
             self.about_button.setText(tr("about_button", "ℹ️ Uygulama Hakkında"))
         
-        # Etiketler
-        if hasattr(self, 'cpu_label'):
-            self.cpu_label.setText(tr("label_cpu_usage", "CPU Kullanımı: %0").replace("%0", "0"))
-        if hasattr(self, 'ram_label'):
-            self.ram_label.setText(tr("label_ram_usage", "RAM Kullanımı: %0").replace("%0", "0"))
-        if hasattr(self, 'gpu_label'):
-            if self.system_monitor.gpu_available:
-                self.gpu_label.setText(tr("label_gpu_usage", "GPU Kullanımı: %0").replace("%0", "0"))
-            else:
-                self.gpu_label.setText(tr("label_gpu_not_supported", "GPU: Desteklenmiyor"))
-        if hasattr(self, 'vram_label'):
-            if self.system_monitor.vram_available:
-                self.vram_label.setText(tr("label_vram_usage", "VRAM Kullanımı: %0").replace("%0", "0"))
-            else:
-                self.vram_label.setText(tr("label_vram_not_supported", "VRAM: Desteklenmiyor"))
-        
         # GroupBox başlıkları
         if hasattr(self, 'profile_manager'):
             self.profile_manager.setTitle(tr("profile_group_title", "Profil Yönetimi"))
@@ -319,7 +304,7 @@ class LlamaTray:
         
         # Pencere başlığı
         if hasattr(self, 'window'):
-            self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {tr('version', 'v1.1.1')}")
+            self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {tr('version', 'v1.1.2')}")
     
     def show_about_dialog(self):
         """Hakkında penceresini göster - dil desteği ile"""
@@ -624,7 +609,7 @@ class LlamaTray:
                 # Model yolu
                 self.model_path = config.get("model_path")
                 if self.model_path:
-                    self.log(self.get_translated("log_model_load_error", "✓ Model yolu yüklendi: {path}").format(path=self.model_path))
+                    self.log(self.get_translated("log_model_path_loaded", "✓ Model yolu yüklendi: {path}").format(path=self.model_path))
                 
                 # GPU katmanları
                 gpu_layers = config.get("gpu_layers")
@@ -845,12 +830,7 @@ class LlamaTray:
             self.monitor_widget.update_resources()
     
     def log(self, message):
-        """Log mesajı ekle - dil desteği ile"""
-        # Eğer mesaj bir format string ise ve çeviri anahtarı içeriyorsa çevir
-        if isinstance(message, str) and ("✓" in message or "❌" in message or "⚠" in message or "🚀" in message or "🛑" in message or "🌐" in message or "🚪" in message):
-            # Basit çeviri kontrolü - eğer İngilizce karakterler varsa İngilizce versiyonu kullan
-            pass
-        
+        """Log mesajı ekle"""
         if hasattr(self, 'log_window'):
             self.log_window.append(message)
     

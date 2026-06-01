@@ -22,11 +22,22 @@ class AboutDialog(QDialog):
         self.translations_func = translations_func
         self.icon_path = icon_path
         
-        # Dil varsayılanı Türkçe (tr)
+        # Dil bilgisini translations_func'den al (varsayılan Türkçe)
         self.current_language = "tr"
+        if self.translations_func:
+            # translations_func ana uygulamadan gelir, oradaki current_language'ı kullan
+            import sys
+            if 'LlamaTray.ui' in sys.modules:
+                try:
+                    ui_module = sys.modules['LlamaTray.ui']
+                    if hasattr(ui_module, '_tray_instance') and ui_module._tray_instance:
+                        self.current_language = ui_module._tray_instance.current_language
+                except Exception:
+                    pass
         
         self.setWindowTitle(self.get_translated("about_dialog_title", "Hakkında / About"))
         self.setModal(True)
+        self.setMinimumSize(400, 350)
         
         if icon_path:
             try:
@@ -86,33 +97,22 @@ class AboutDialog(QDialog):
     
     def _build_html_content(self, lang_code):
         """HTML içeriğini dil seçimine göre oluştur"""
-        # Translation dosyasından değerleri al
-        try:
-            import json
-            import os
-            TRANSLATIONS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "translations.json")
-            with open(TRANSLATIONS_PATH, "r", encoding="utf-8") as f:
-                translations = json.load(f)
-            
-            tr = translations.get(lang_code, {})
-        except Exception:
-            # Hata durumunda varsayılan değerler
-            tr = {
-                'app_name': '🦙 LlamaTray',
-                'version': 'v1.1.1',
-                'developer': 'Geliştirici: Fatih Durdu',
-                'description': 'Linux (Arch Linux / CachyOS) sistemler için minimalist, hafif ve zombi süreç önleme mekanizmasına sahip PyQt6 tabanlı Llama.cpp (llama-server) yönetim aracı.',
-                'website': 'Kişisel Web Sitesi',
-                'github_profile': 'GitHub Profili (DolbyDAX2)',
-                'gitea_repo': 'Proje Gitea Deposu'
-            }
+        # translations_func'u kullan (ana uygulamadan gelen çeviri fonksiyonu)
+        # veya varsayılan değerler
+        app_name = self.get_translated("app_name", "🦙 LlamaTray")
+        version = self.get_translated("version", "v1.1.2")
+        developer = self.get_translated("developer", "Geliştirici: Fatih Durdu")
+        description = self.get_translated("description", "Linux (Arch Linux / CachyOS) sistemler için minimalist, hafif ve zombi süreç önleme mekanizmasına sahip PyQt6 tabanlı Llama.cpp (llama-server) yönetim aracı.")
+        website = self.get_translated("website", "Kişisel Web Sitesi")
+        github_profile = self.get_translated("github_profile", "GitHub Profili (DolbyDAX2)")
+        gitea_repo = self.get_translated("gitea_repo", "Proje Gitea Deposu")
         
         return (
-            f"<h3 style='color: #2980b9;'>{tr.get('app_name', '🦙 LlamaTray')} {tr.get('version', 'v1.1.1')}</h3>"
-            f"<p><b>{tr.get('developer', 'Geliştirici: Fatih Durdu')}</b></p>"
-            f"<p>{tr.get('description', 'Linux (Arch Linux / CachyOS) sistemler için minimalist, hafif ve zombi süreç önleme mekanizmasına sahip PyQt6 tabanlı Llama.cpp (llama-server) yönetim aracı.')}</p>"
+            f"<h3 style='color: #2980b9;'>{app_name} {version}</h3>"
+            f"<p><b>{developer}</b></p>"
+            f"<p>{description}</p>"
             "<hr>"
-            f"<p>🌐 <a href='https://fatihdurdu.xyz/llamatray'>{tr.get('website', 'Kişisel Web Sitesi')}</a></p>"
-            f"<p>🐙 <a href='https://github.com/DolbyDAX2'>{tr.get('github_profile', 'GitHub Profili (DolbyDAX2)')}</a></p>"
-            f"<p>📦 <a href='https://gitea.fatihdurdu.xyz/dolbydax2/LlamaTray'>{tr.get('gitea_repo', 'Proje Gitea Deposu')}</a></p>"
+            f"<p>🌐 <a href='https://fatihdurdu.xyz/llamatray'>{website}</a></p>"
+            f"<p>🐙 <a href='https://github.com/DolbyDAX2'>{github_profile}</a></p>"
+            f"<p>📦 <a href='https://gitea.fatihdurdu.xyz/dolbydax2/LlamaTray'>{gitea_repo}</a></p>"
         )
