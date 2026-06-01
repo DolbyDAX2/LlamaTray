@@ -5,6 +5,9 @@ CPU, RAM, GPU ve VRAM kullanım bilgilerini sağlar.
 
 import os
 import subprocess
+import warnings
+# pynvml/nvidia-ml-py FutureWarning'ini sessize al (pynvml deprecated, nvidia-ml-py öneriliyor)
+warnings.filterwarnings("ignore", message="The pynvml package is deprecated")
 
 
 class SystemMonitor:
@@ -23,7 +26,7 @@ class SystemMonitor:
         self.vram_available = False
         self.gpu_method = None
         
-        # 1. pynvml (NVIDIA) dene
+        # 1. pynvml (NVIDIA) dene - nvidia-ml-py de aynı import adını kullanır
         try:
             import pynvml
             pynvml.nvmlInit()
@@ -131,6 +134,17 @@ class SystemMonitor:
         except Exception:
             return 0
 
+    def get_ram_info(self):
+        """(kullanılan_GB, toplam_GB) olarak RAM bilgisini döndür"""
+        try:
+            import psutil
+            mem = psutil.virtual_memory()
+            used_gb = mem.used / (1024 ** 3)
+            total_gb = mem.total / (1024 ** 3)
+            return (used_gb, total_gb)
+        except Exception:
+            return (0, 0)
+
     def get_gpu_usage(self):
         """GPU kullanım yüzdesini al"""
         if not self.gpu_available:
@@ -202,16 +216,25 @@ class SystemMonitor:
         """VRAM kullanım yüzdesini al"""
         if not self.vram_available:
             return None
+        info = self.get_vram_info()
+        if info and info[1] > 0:
+            return (info[0] / info[1]) * 100
+        return 0
+
+    def get_vram_info(self):
+        """(kullanılan_GB, toplam_GB) olarak VRAM bilgisini döndür"""
+        if not self.vram_available:
+            return (0, 0)
 
         if self.gpu_method == "nvidia":
             try:
                 import pynvml
                 handle = pynvml.nvmlDeviceGetHandleByIndex(0)
                 info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                return (info.used / info.total) * 100
+                return (info.used / (1024**3), info.total / (1024**3))
             except Exception as e:
-                print(f"⚠ VRAM usage retrieval failed (nvidia): {e}")
-                return 0
+                print(f"⚠ VRAM info retrieval failed (nvidia): {e}")
+                return (0, 0)
 
         elif self.gpu_method == "nvidia_smi":
             try:
@@ -221,12 +244,12 @@ class SystemMonitor:
                 )
                 if result.returncode == 0:
                     parts = result.stdout.strip().replace(" MiB", "").split(", ")
-                    used = float(parts[0])
-                    total = float(parts[1])
-                    return (used / total) * 100
+                    used_mib = float(parts[0])
+                    total_mib = float(parts[1])
+                    return (used_mib / 1024, total_mib / 1024)
             except Exception as e:
-                print(f"⚠ VRAM usage retrieval failed (nvidia_smi): {e}")
-                pass
+                print(f"⚠ VRAM info retrieval failed (nvidia_smi): {e}")
+                return (0, 0)
 
         elif self.gpu_method == "rocm_smi":
             try:
@@ -235,27 +258,23 @@ class SystemMonitor:
                     capture_output=True, text=True, timeout=5
                 )
                 if result.returncode == 0:
-                    # CSV çıktısını parse et - başlık satırını atla, ikinci satırdan itibaren değerleri al
                     lines = result.stdout.strip().split('\n')
-                    for line in lines[1:]:  # İlk satırı (başlık) atla
+                    for line in lines[1:]:
                         if ',' in line:
                             parts = line.split(',')
                             if len(parts) >= 3:
-                                # parts[0] = device (card0), parts[1] = Total Memory, parts[2] = Used Memory
                                 try:
                                     total_bytes = int(parts[1].strip())
                                     used_bytes = int(parts[2].strip())
-                                    
                                     if total_bytes > 0:
-                                        return (used_bytes / total_bytes) * 100
+                                        return (used_bytes / (1024**3), total_bytes / (1024**3))
                                 except ValueError:
                                     pass
             except Exception as e:
-                print(f"⚠ VRAM usage retrieval failed (rocm_smi): {e}")
-                pass
+                print(f"⚠ VRAM info retrieval failed (rocm_smi): {e}")
+                return (0, 0)
 
         elif self.gpu_method == "amdgpu_sysfs":
-            # mem_info_vram_used ve mem_info_vram_total dosyalarını oku
             try:
                 drm_path = "/sys/class/drm"
                 for device in os.listdir(drm_path):
@@ -271,9 +290,9 @@ class SystemMonitor:
                             with open(vram_total_path, 'r') as f:
                                 total = int(f.read().strip())
                         if total > 0:
-                            return (used / total) * 100
+                            return (used / (1024**3), total / (1024**3))
             except Exception as e:
-                print(f"⚠ VRAM usage retrieval failed (amdgpu_sysfs): {e}")
-                pass
+                print(f"⚠ VRAM info retrieval failed (amdgpu_sysfs): {e}")
+                return (0, 0)
 
-        return 0
+        return (0, 0)

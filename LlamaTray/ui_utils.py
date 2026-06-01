@@ -17,7 +17,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 ICON_PATH = os.path.join(CURRENT_DIR, "assets", "icon.png")
 
 if not os.path.exists(ICON_PATH):
-    print(f"!!! DIKKAT: İkon bulunamadi, aranan konum: {ICON_PATH}")
+    print(f"!!! WARNING: Icon not found, searched at: {ICON_PATH}")
 
 
 # Global referans - atexit için (ui.py ile senkronize)
@@ -30,7 +30,7 @@ def load_translations():
         with open(TRANSLATIONS_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        print(f"⚠ Translation dosyası yüklenemedi: {e}")
+        print(f"⚠ Translation file could not be loaded: {e}")
         return {"tr": {}, "en": {}}
 
 
@@ -45,14 +45,16 @@ def cleanup_tray_icon():
         if _tray_instance is not None:
             # Tray ikonunu gizle (Wayland/KDE uyumluluğu)
             try:
-                _tray_instance.hide()
-            except Exception as e:
+                if hasattr(_tray_instance, 'tray_icon'):
+                    _tray_instance.tray_icon.hide()
+            except Exception:
                 pass
             
             # Tray ikonunu bellekten sil
             try:
-                _tray_instance.deleteLater()
-            except Exception as e:
+                if hasattr(_tray_instance, 'tray_icon'):
+                    _tray_instance.tray_icon.deleteLater()
+            except Exception:
                 pass
             
             # Eğer context menu varsa onu da sil
