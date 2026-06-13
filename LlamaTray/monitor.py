@@ -17,6 +17,7 @@ class SystemMonitor:
         self.gpu_available = False
         self.vram_available = False
         self.gpu_method = None
+        self._nvml_initialized = False
         self._init_gpu()
 
     def _init_gpu(self):
@@ -25,11 +26,12 @@ class SystemMonitor:
         self.gpu_available = False
         self.vram_available = False
         self.gpu_method = None
-        
+
         # 1. pynvml (NVIDIA) dene - nvidia-ml-py de aynı import adını kullanır
         try:
             import pynvml
             pynvml.nvmlInit()
+            self._nvml_initialized = True
             pynvml.nvmlDeviceGetCount()
             self.gpu_available = True
             self.vram_available = True
@@ -117,11 +119,22 @@ class SystemMonitor:
         except Exception:
             pass
 
+    def _shutdown_gpu(self):
+        """GPU kaynaklarını temizle (nvmlShutdown)"""
+        if self._nvml_initialized:
+            try:
+                import pynvml
+                pynvml.nvmlShutdown()
+            except Exception:
+                pass
+            finally:
+                self._nvml_initialized = False
+
     def get_cpu_usage(self):
-        """CPU kullanım yüzdesini al"""
+        """CPU kullanım yüzdesini al (non-blocking)"""
         try:
             import psutil
-            return psutil.cpu_percent(interval=0.1)
+            return psutil.cpu_percent(interval=0)
         except Exception:
             return 0
 
@@ -296,3 +309,7 @@ class SystemMonitor:
                 return (0, 0)
 
         return (0, 0)
+
+    def __del__(self):
+        """Kaynakları temizle - nvmlShutdown çağrısı"""
+        self._shutdown_gpu()

@@ -8,6 +8,7 @@ import subprocess
 import shlex
 import socket
 import time
+import shutil
 from PyQt6.QtCore import QProcess, QProcessEnvironment
 
 
@@ -27,15 +28,52 @@ def cleanup_old_processes(port):
     # Port'u kontrol et ve gerekirse force close yap
     if is_port_in_use(port):
         try:
-            # lsof ile port kullanıcısını bul ve sonlandır (shell=False güvenlik)
-            result = subprocess.run(
-                ["bash", "-c", f"lsof -ti:{port} | xargs kill -9"],
+            # 1. Önce SIGTERM gönder - lsof ile PID'leri bul ve kill (SIGTERM) yap
+            pid_result = subprocess.run(
+                ["lsof", "-ti", str(port)],
                 capture_output=True,
                 text=True,
                 timeout=2
             )
+            if pid_result.returncode == 0 and pid_result.stdout.strip():
+                pids = pid_result.stdout.strip().split('\n')
+                for pid in pids:
+                    if pid.strip():
+                        try:
+                            subprocess.run(
+                                ["kill", pid.strip()],
+                                capture_output=True,
+                                timeout=2
+                            )
+                        except Exception:
+                            pass
+
+                # 2. Port'un kapanmasını polling ile bekle (0.5s adımlarla max 3 saniye)
+                for _ in range(6):
+                    if not is_port_in_use(port):
+                        break
+                    time.sleep(0.5)
+
+                # 3. Hala kapanmadıysa SIGKILL (kill -9) ile zorla kapat
+                if is_port_in_use(port):
+                    for pid in pids:
+                        if pid.strip():
+                            try:
+                                subprocess.run(
+                                    ["kill", "-9", pid.strip()],
+                                    capture_output=True,
+                                    timeout=2
+                                )
+                            except Exception:
+                                pass
+                    # Son bir kez daha bekle
+                    time.sleep(0.5)
         except Exception:
             pass
+
+
+# Cache: find_llama_server sonucu
+_llama_server_cached_path = None
 
 
 class LlamaServerManager(QProcess):
@@ -47,10 +85,10 @@ class LlamaServerManager(QProcess):
         self.host = "127.0.0.1"
         self.port = 8080
         self.log_callback = log_callback
-        
+
         # QProcess ayarları
         self.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
-        
+
         # Sinyalleri bağla
         self.readyReadStandardOutput.connect(self.read_output)
         self.started.connect(self.on_started)
@@ -99,20 +137,21 @@ class LlamaServerManager(QProcess):
         self.server_running = False
 
     def find_llama_server(self):
-        """llama-server çalıştırılabilir dosyasını bul"""
+        """llama-server çalıştırılabilir dosyasını bul (cached)"""
+        global _llama_server_cached_path
+
+        # Cache varsa kullan
+        if _llama_server_cached_path is not None:
+            return _llama_server_cached_path
+
         llama_server_cmd = None
 
         # Önce PATH'te ara
         try:
-            result = subprocess.run(
-                ["which", "llama-server"],
-                capture_output=True,
-                text=True,
-                timeout=2
-            )
-            if result.returncode == 0:
-                llama_server_cmd = result.stdout.strip()
+            llama_server_cmd = shutil.which("llama-server")
+            if llama_server_cmd:
                 self.log(f"✓ llama-server found: {llama_server_cmd}")
+                _llama_server_cached_path = llama_server_cmd
                 return llama_server_cmd
         except Exception as e:
             self.log(f"⚠ PATH search failed: {e}")
@@ -125,14 +164,16 @@ class LlamaServerManager(QProcess):
             os.path.expanduser("~/llama.cpp/build/bin/llama-server"),
             os.path.expanduser("~/llama.cpp/server/llama-server"),
         ]
-        
+
         for path in common_paths:
             if os.path.exists(path) and os.access(path, os.X_OK):
                 self.log(f"✓ llama-server found: {path}")
+                _llama_server_cached_path = path
                 return path
 
         # Son çare olarak llama-server'ı doğrudan dene
         self.log("⚠ Looking for llama-server in system commands...")
+        _llama_server_cached_path = "llama-server"
         return "llama-server"
 
     def start_server(self, model_path, gpu_layers=99, context_size=8192, port=8080, extra_params=""):
@@ -186,31 +227,41 @@ class LlamaServerManager(QProcess):
         # Öncesi: Eski zombi süreçleri temizle
         self.log("🧹 Cleaning up old llama-server processes and checking ports...")
         cleanup_old_processes(port)
-        
-        # Port'un boş olup olmadığını kontrol et (temizlik sonrası)
-        time.sleep(1)
-        if is_port_in_use(port):
+
+        # Port'un boş olup olmadığını polling ile kontrol et (max 3 saniye)
+        port_cleared = False
+        for _ in range(6):
+            if not is_port_in_use(port):
+                port_cleared = True
+                break
+            time.sleep(0.5)
+
+        if not port_cleared:
             self.log(f"❌ Error: Port {port} could not be cleared. Try a different port or check with lsof.")
             return False
         self.log(f"✓ Port {port} is free.")
-        
+
         # Port ve host'u kaydet
         self.port = port
         self.host = "127.0.0.1"
 
+        # Cache'li find_llama_server - bu fonksiyon ikinci kez çağrıldığında
+        # direkt cached sonucu döndürür, tekrar which araması yapmaz
         llama_server_cmd = self.find_llama_server()
         if not llama_server_cmd:
             self.log("❌ Error: llama-server not found. Make sure llama.cpp is installed.")
             return False
+
         # Bulunan komutun çalıştırılabilir olduğunu kontrol et
         if os.path.isabs(llama_server_cmd) and not os.access(llama_server_cmd, os.X_OK):
             self.log(f"❌ Error: {llama_server_cmd} is not executable.")
             return False
+
         if not os.path.isabs(llama_server_cmd):
-            # Göreceli yol (PATH'te aranacak) - varlığını kontrol et
+            # Göreceli yol (PATH'te aranacak) - shutil.which ile varlığını kontrol et
             try:
-                result = subprocess.run(["which", llama_server_cmd], capture_output=True, text=True, timeout=2)
-                if result.returncode != 0:
+                found = shutil.which(llama_server_cmd)
+                if found is None:
                     self.log(f"❌ Error: '{llama_server_cmd}' not found in PATH. Make sure llama.cpp is installed.")
                     return False
             except Exception:
@@ -242,15 +293,15 @@ class LlamaServerManager(QProcess):
             # Ortam ayarları
             env = QProcessEnvironment.systemEnvironment()
             self.setProcessEnvironment(env)
-            
+
             # İşlemi başlat
             self.start(llama_server_cmd, args)
-            
+
             # Başlatma başarısı - hemen True yapma, sinyalleri bekle
             # QProcess başlatıldı, ama gerçekten başladı mı diye on_started sinyali bekleyecek
             self.log("⏳ Server startup in progress...")
             return True
-            
+
         except FileNotFoundError as e:
             self.log(f"❌ Error: llama-server not found: {e}")
             self.server_running = False
@@ -270,7 +321,7 @@ class LlamaServerManager(QProcess):
             # 1. Önce terminate (SIGTERM) gönder
             self.terminate()
             self.log("📤 SIGTERM signal sent...")
-            
+
             # 2. 3 saniye bekle (timeout mekanizması)
             if not self.waitForFinished(3000):
                 self.log("⚠ Server did not shut down gracefully, sending SIGKILL...")
@@ -292,7 +343,7 @@ class LlamaServerManager(QProcess):
             return
 
         self.log("🛑 Sending server stop request...")
-        
+
         # 1. Önce HTTP API üzerinden nazikçe kapatmayı dene (llama-server /exit endpoint)
         try:
             import requests
@@ -307,13 +358,19 @@ class LlamaServerManager(QProcess):
 
         # 2. Süreç grubunu temizle (terminate + wait)
         self.cleanup_server_process()
-        
-        # 3. Son kontrol: port hala açık mı?
-        time.sleep(1)
-        if is_port_in_use(self.port):
+
+        # 3. Son kontrol: port hala açık mı? (polling ile)
+        port_cleared = False
+        for _ in range(6):
+            if not is_port_in_use(self.port):
+                port_cleared = True
+                break
+            time.sleep(0.5)
+
+        if not port_cleared:
             self.log(f"⚠ Port {self.port} is still in use, forcefully cleaning...")
             cleanup_old_processes(self.port)
-        
+
         self.server_running = False
         self.log("=" * 60)
 

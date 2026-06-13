@@ -43,7 +43,7 @@ class AdvancedSettingsWidget(QGroupBox):
         self.context_size_combobox.setCurrentText("32768")
         self.context_size_combobox.setEditable(True)
         from PyQt6.QtGui import QIntValidator
-        self.context_size_combobox.setValidator(QIntValidator(512, 1000000))
+        self.context_size_combobox.lineEdit().setValidator(QIntValidator(512, 1000000))
         self.context_size_combobox.setCurrentIndex(0)
         context_row.addWidget(self.context_size_label)
         context_row.addWidget(self.context_size_combobox)
