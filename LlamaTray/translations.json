@@ -2,7 +2,7 @@
   "tr": {
     "config_language": "Dil",
     "app_name": "🦙 LlamaTray",
-    "version": "v1.1.2",
+    "version": "v1.1.3",
     "developer": "Geliştirici: Fatih Durdu",
     "description": "Linux (Arch Linux / CachyOS) sistemler için minimalist, hafif ve zombi süreç önleme mekanizmasına sahip PyQt6 tabanlı Llama.cpp (llama-server) yönetim aracı.",
     "website": "Kişisel Web Sitesi",
@@ -90,7 +90,7 @@
   "en": {
     "config_language": "Language",
     "app_name": "🦙 LlamaTray",
-    "version": "v1.1.2",
+    "version": "v1.1.3",
     "developer": "Developer: Fatih Durdu",
     "description": "Minimalist, lightweight PyQt6-based Llama.cpp (llama-server) management tool for Linux (Arch Linux / CachyOS) systems with zombie process prevention mechanism.",
     "website": "Personal Website",

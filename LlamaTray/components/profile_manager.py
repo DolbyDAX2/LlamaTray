@@ -3,8 +3,6 @@ Profil Yönetimi Bileşeni.
 Kayıtlı profilleri listeleme, kaydetme, güncelleme ve silme işlevlerini içerir.
 """
 
-import json
-import os
 from PyQt6.QtWidgets import QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QMessageBox, QInputDialog
 
 

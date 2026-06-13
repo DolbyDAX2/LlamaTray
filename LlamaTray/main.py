@@ -35,9 +35,15 @@ def main():
     """Ana uygulama fonksiyonu"""
     # Crash handler'ı kur
     setup_crash_handler()
-    
-    # Linux/KDE/Wayland üzerinde sistem tepsisi ve pencere ikonunun tanınması için AppID ayarı
-    os.environ["QT_QPA_PLATFORM_THEME"] = "kde"
+
+    # QT_QPA_PLATFORM_THEME ortam değişkenini dinamik olarak ayarla
+    # Mevcut masaüstü ortamını tespit et ve ona göre ayar yap
+    desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+    if "kde" in desktop:
+        os.environ["QT_QPA_PLATFORM_THEME"] = "kde"
+    elif "gnome" in desktop:
+        os.environ["QT_QPA_PLATFORM_THEME"] = "gnome"
+    # Diğer ortamlarda (XFCE, i3, Sway, vs.) varsayılan Qt tema kullanılsın
 
     app = QApplication(sys.argv)
 

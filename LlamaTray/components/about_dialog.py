@@ -26,14 +26,13 @@ class AboutDialog(QDialog):
         self.current_language = "tr"
         if self.translations_func:
             # translations_func ana uygulamadan gelir, oradaki current_language'ı kullan
-            import sys
-            if 'LlamaTray.ui' in sys.modules:
-                try:
-                    ui_module = sys.modules['LlamaTray.ui']
-                    if hasattr(ui_module, '_tray_instance') and ui_module._tray_instance:
-                        self.current_language = ui_module._tray_instance.current_language
-                except Exception:
-                    pass
+            # Merkezi _tray_instance referansını ui_utils üzerinden al
+            try:
+                from LlamaTray import ui_utils
+                if ui_utils._tray_instance is not None:
+                    self.current_language = ui_utils._tray_instance.current_language
+            except Exception:
+                pass
         
         self.setWindowTitle(self.get_translated("about_dialog_title", "Hakkında / About"))
         self.setModal(True)
@@ -100,7 +99,7 @@ class AboutDialog(QDialog):
         # translations_func'u kullan (ana uygulamadan gelen çeviri fonksiyonu)
         # veya varsayılan değerler
         app_name = self.get_translated("app_name", "🦙 LlamaTray")
-        version = self.get_translated("version", "v1.1.2")
+        version = self.get_translated("version", "v1.1.3")
         developer = self.get_translated("developer", "Geliştirici: Fatih Durdu")
         description = self.get_translated("description", "Linux (Arch Linux / CachyOS) sistemler için minimalist, hafif ve zombi süreç önleme mekanizmasına sahip PyQt6 tabanlı Llama.cpp (llama-server) yönetim aracı.")
         website = self.get_translated("website", "Kişisel Web Sitesi")
