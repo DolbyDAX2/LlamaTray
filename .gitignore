@@ -30,3 +30,12 @@ arch-package/LlamaTray/FETCH_HEAD
 arch-package/LlamaTray/packed-refs
 # Hata raporu - yerel analiz dosyasi, push edilmez
 HATA_RAPORU.md
+
+# Code review report - local analysis file
+code-review-report.md
+
+# Release notes - local draft
+release-notes*.md
+
+# Config fix note - development artifact
+ui_config_fix.txt
