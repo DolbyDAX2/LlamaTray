@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QLabel, QFrame, QProgressBar, QSpinBox, QComboBox,
     QLineEdit, QGroupBox, QMainWindow
 )
-from PyQt6.QtGui import QIcon, QAction, QIntValidator
+from PyQt6.QtGui import QIcon, QAction, QIntValidator, QFont
 from PyQt6.QtCore import QTimer, QUrl
 
 import LlamaTray.ui_utils as ui_utils
@@ -57,11 +57,13 @@ class LlamaTray:
         # Tray ikonunu başlat
         self._init_tray_icon()
 
+        # Model/proj path değişkenlerini _init_main_window ÖNCE tanımla
+        # (build_command_preview() içinde self.model_path kullanılıyor)
+        self.model_path = ""
+        self.mmproj_path = ""
+
         # Ana pencereyi başlat
         self._init_main_window()
-
-        # Model yolu başlangıçta None - load_config() tarafından doldurulabilir
-        self.model_path = None
 
         # Tüm ayarları yükle (model_path, gpu_layers, context_size vb.)
         self.load_config()
@@ -171,6 +173,32 @@ class LlamaTray:
         self.advanced_settings = AdvancedSettingsWidget(translations_func=self.get_translated)
         self.layout.addWidget(self.advanced_settings)
 
+        # Başlatma komutu önizlemesi
+        self.preview_groupbox = QGroupBox()
+        self.preview_groupbox.setTitle(self.get_translated("preview_group_title", "Başlatma Komutu Önizlemesi"))
+        preview_layout = QVBoxLayout()
+        preview_label = QLabel(self.get_translated("label_command_preview", "Komut:"))
+        preview_layout.addWidget(preview_label)
+        self.command_preview = QTextEdit()
+        self.command_preview.setReadOnly(True)
+        mono_font = QFont("monospace")
+        mono_font.setStyleHint(QFont.StyleHint.TypeWriter)
+        self.command_preview.setFont(mono_font)
+        self.command_preview.setFixedHeight(60)
+        preview_layout.addWidget(self.command_preview)
+        self.preview_groupbox.setLayout(preview_layout)
+        self.layout.addWidget(self.preview_groupbox)
+
+        # Sinyal bağlantıları — parametre değişince önizlemeyi güncelle
+        self.advanced_settings.gpu_layers_spinbox.valueChanged.connect(self.build_command_preview)
+        self.advanced_settings.context_size_combobox.currentTextChanged.connect(self.build_command_preview)
+        self.advanced_settings.port_spinbox.valueChanged.connect(self.build_command_preview)
+        self.advanced_settings.extra_params_lineedit.textChanged.connect(self.build_command_preview)
+        self.advanced_settings.mmproj_lineedit.textChanged.connect(self.build_command_preview)
+
+        # Önizlemeyi ilk kez oluştur
+        self.build_command_preview()
+
         # Profil yönetimi bileşenini ekle
         self.profile_manager = ProfileManagerWidget(translations_func=self.get_translated)
         self.profile_manager.profile_combobox.currentIndexChanged.connect(self.on_profile_selected)
@@ -193,8 +221,8 @@ class LlamaTray:
         central_widget = QWidget()
         central_widget.setLayout(self.layout)
         self.window.setCentralWidget(central_widget)
-        self.window.setWindowTitle(f"{self.get_translated('app_name', '🦙 LlamaTray')} {self.get_translated('version', 'v1.1.3')}")
-        self.window.setGeometry(100, 100, 450, 650)
+        self.window.setWindowTitle(f"{self.get_translated('app_name', '🦙 LlamaTray')} {self.get_translated('version', 'v1.2.0')}")
+        self.window.setGeometry(100, 100, 450, 750)
 
         # Pencere kapatıldığında (X butonu) sunucuyu otomatik durdur
         original_close_event = self.window.closeEvent
@@ -230,6 +258,52 @@ class LlamaTray:
     def get_translated(self, key, default=""):
         """Verilen anahtar için çeviriyi döndür"""
         return self.translations.get(self.current_language, {}).get(key, default)
+
+    def build_command_preview(self):
+        """Başlatma komutunu oluştur ve önizlemede göster"""
+        if not hasattr(self, 'command_preview'):
+            return
+
+        try:
+            from .server import LlamaServerManager
+            cmd_path = LlamaServerManager(log_callback=None).find_llama_server()
+        except Exception:
+            cmd_path = "llama-server"
+
+        parts = [cmd_path]
+
+        # Model yolu
+        if self.model_path:
+            parts.extend(["-m", self.model_path])
+
+        # GPU katmanları
+        if hasattr(self, 'advanced_settings'):
+            gpu_layers = self.advanced_settings.gpu_layers_spinbox.value()
+            parts.extend(["--n-gpu-layers", str(gpu_layers)])
+
+            # Context boyutu
+            try:
+                context_size = int(self.advanced_settings.context_size_combobox.currentText())
+            except (ValueError, TypeError):
+                context_size = 32768
+            parts.extend(["--ctx-size", str(context_size)])
+
+            # Port
+            port = self.advanced_settings.port_spinbox.value()
+            parts.extend(["--port", str(port)])
+
+            # mmproj dosyası
+            mmproj_path = self.advanced_settings.mmproj_lineedit.text().strip()
+            if mmproj_path:
+                parts.extend(["--mmproj", mmproj_path])
+
+            # Ek parametreler
+            extra_params = self.advanced_settings.extra_params_lineedit.text().strip()
+            if extra_params:
+                parts.append(extra_params)
+
+        command_str = " ".join(parts)
+        self.command_preview.setPlainText(command_str)
 
     def on_language_changed(self, language):
         """Dil değiştiğinde çağrılır"""
@@ -305,7 +379,11 @@ class LlamaTray:
 
         # Pencere başlığı
         if hasattr(self, 'window'):
-            self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {tr('version', 'v1.1.3')}")
+            self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {tr('version', 'v1.2.0')}")
+
+        # Önizleme groupbox başlığı
+        if hasattr(self, 'preview_groupbox'):
+            self.preview_groupbox.setTitle(tr("preview_group_title", "Başlatma Komutu Önizlemesi"))
 
     def show_about_dialog(self):
         """Hakkında penceresini göster - dil desteği ile"""
@@ -381,7 +459,8 @@ class LlamaTray:
                 "gpu_layers": 99,
                 "context_size": 32768,
                 "port": 8080,
-                "extra_args": ""
+                "extra_args": "",
+                "mmproj_path": ""
             }
 
         try:
@@ -393,7 +472,8 @@ class LlamaTray:
             "gpu_layers": self.advanced_settings.gpu_layers_spinbox.value(),
             "context_size": context_size,
             "port": self.advanced_settings.port_spinbox.value(),
-            "extra_args": self.advanced_settings.extra_params_lineedit.text().strip()
+            "extra_args": self.advanced_settings.extra_params_lineedit.text().strip(),
+            "mmproj_path": self.advanced_settings.mmproj_lineedit.text().strip()
         }
 
     def apply_profile_values(self, profile_data):
@@ -444,6 +524,11 @@ class LlamaTray:
         extra_args = profile_data.get("extra_args")
         if extra_args is not None:
             self.advanced_settings.extra_params_lineedit.setText(str(extra_args))
+
+        # mmproj dosyası
+        mmproj_path = profile_data.get("mmproj_path")
+        if mmproj_path is not None:
+            self.advanced_settings.mmproj_lineedit.setText(str(mmproj_path))
 
     def save_current_profile(self):
         """Mevcut form değerlerini bir profile kaydet - dil desteği ile"""
@@ -585,6 +670,7 @@ class LlamaTray:
                 "context_size": context_size,
                 "port": self.advanced_settings.port_spinbox.value(),
                 "extra_params": self.advanced_settings.extra_params_lineedit.text(),
+                "mmproj_path": self.advanced_settings.mmproj_lineedit.text().strip(),
                 "language": language  # Dil tercihi kaydet
             }
 
@@ -654,6 +740,11 @@ class LlamaTray:
                 if extra_params is not None:
                     self.advanced_settings.extra_params_lineedit.setText(str(extra_params))
 
+                # mmproj dosyası
+                mmproj_path = config.get("mmproj_path")
+                if mmproj_path is not None:
+                    self.advanced_settings.mmproj_lineedit.setText(str(mmproj_path))
+
                 # Dil tercihi - kayıtlı dil varsa onu kullan
                 saved_language = config.get("language")
                 if saved_language in ["tr", "en"]:
@@ -694,6 +785,8 @@ class LlamaTray:
                 self.log(msg.format(file_path=file_path))
                 msg = self.get_translated("log_file_size", "  Dosya boyutu: {size:.2f} MB")
                 self.log(msg.format(size=file_size_mb))
+                # Model değişince önizlemeyi güncelle
+                self.build_command_preview()
         except Exception as e:
             self.log(f"❌ Hata: Model seçilirken hata - {type(e).__name__}: {e}")
 
@@ -714,6 +807,7 @@ class LlamaTray:
 
             port = self.advanced_settings.port_spinbox.value()
             extra_params = self.advanced_settings.extra_params_lineedit.text().strip()
+            mmproj_path = self.advanced_settings.mmproj_lineedit.text().strip()
 
             # UI button'larını disable et işlem sırasında
             self.start_server_button.setEnabled(False)
@@ -728,7 +822,8 @@ class LlamaTray:
                 gpu_layers=gpu_layers,
                 context_size=context_size,
                 port=port,
-                extra_params=extra_params
+                extra_params=extra_params,
+                mmproj_path=mmproj_path
             )
 
             if success:

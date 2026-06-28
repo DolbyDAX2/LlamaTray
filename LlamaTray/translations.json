@@ -2,7 +2,7 @@
   "tr": {
     "config_language": "Dil",
     "app_name": "🦙 LlamaTray",
-    "version": "v1.1.3",
+    "version": "v1.2.0",
     "developer": "Geliştirici: Fatih Durdu",
     "description": "Linux (Arch Linux / CachyOS) sistemler için minimalist, hafif ve zombi süreç önleme mekanizmasına sahip PyQt6 tabanlı Llama.cpp (llama-server) yönetim aracı.",
     "website": "Kişisel Web Sitesi",
@@ -30,6 +30,8 @@
     "label_port": "Port:",
     "label_extra_params": "Ek Parametreler:",
     "placeholder_extra_params": "Örn: -t 8 --flash-attn",
+    "label_mmproj": "mmproj Dosyası:",
+    "placeholder_mmproj": "Örn: /home/kullanici/proje.mmproj",
     "profile_group_title": "Profil Yönetimi",
     "button_save_profile": "💾 Profili Kaydet",
     "button_update_profile": "🔄 Profili Güncelle",
@@ -85,12 +87,14 @@
     "translations_loaded": "✓ Çeviri dosyası yüklendi",
     "translations_load_error": "⚠ Translation dosyası yüklenemedi: {error}",
     "tr_language": "🇹🇷 Türkçe",
+    "preview_group_title": "Başlatma Komutu Önizlemesi",
+    "label_command_preview": "Komut:",
     "en_language": "🇬🇧 English"
   },
   "en": {
     "config_language": "Language",
     "app_name": "🦙 LlamaTray",
-    "version": "v1.1.3",
+    "version": "v1.2.0",
     "developer": "Developer: Fatih Durdu",
     "description": "Minimalist, lightweight PyQt6-based Llama.cpp (llama-server) management tool for Linux (Arch Linux / CachyOS) systems with zombie process prevention mechanism.",
     "website": "Personal Website",
@@ -118,6 +122,8 @@
     "label_port": "Port:",
     "label_extra_params": "Extra Parameters:",
     "placeholder_extra_params": "E.g.: -t 8 --flash-attn",
+    "label_mmproj": "mmproj File:",
+    "placeholder_mmproj": "E.g.: /home/user/project.mmproj",
     "profile_group_title": "Profile Management",
     "button_save_profile": "💾 Save Profile",
     "button_update_profile": "🔄 Update Profile",
@@ -173,6 +179,8 @@
     "translations_loaded": "✓ Translation file loaded",
     "translations_load_error": "⚠ Could not load translation file: {error}",
     "tr_language": "🇹🇷 Turkish",
+    "preview_group_title": "Launch Command Preview",
+    "label_command_preview": "Command:",
     "en_language": "🇬🇧 English"
   }
 }
