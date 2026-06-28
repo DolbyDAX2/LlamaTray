@@ -3,7 +3,10 @@ Gelişmiş Ayarlar Bileşeni.
 GPU katmanları, context boyutu, port ve ek parametreler için ayarları içerir.
 """
 
-from PyQt6.QtWidgets import QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox, QComboBox, QLineEdit
+from PyQt6.QtWidgets import (
+    QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox, QComboBox,
+    QLineEdit, QPushButton, QFileDialog
+)
 
 
 class AdvancedSettingsWidget(QGroupBox):
@@ -65,11 +68,24 @@ class AdvancedSettingsWidget(QGroupBox):
         extra_row.addWidget(self.extra_params_label)
         extra_row.addWidget(self.extra_params_lineedit)
         
+        # mmproj Dosyası
+        mmproj_row = QHBoxLayout()
+        self.mmproj_label = QLabel(self.get_translated("label_mmproj", "mmproj Dosyası:"))
+        self.mmproj_lineedit = QLineEdit()
+        self.mmproj_lineedit.setPlaceholderText(self.get_translated("placeholder_mmproj", "Örn: /home/kullanici/model.gguf"))
+        self.mmproj_browse_button = QPushButton("📁")
+        self.mmproj_browse_button.setFixedWidth(32)
+        self.mmproj_browse_button.clicked.connect(self.browse_mmproj_file)
+        mmproj_row.addWidget(self.mmproj_label)
+        mmproj_row.addWidget(self.mmproj_lineedit)
+        mmproj_row.addWidget(self.mmproj_browse_button)
+        
         # Layout'a ekle
         layout.addLayout(gpu_row)
         layout.addLayout(context_row)
         layout.addLayout(port_row)
         layout.addLayout(extra_row)
+        layout.addLayout(mmproj_row)
         
         self.setLayout(layout)
     
@@ -79,19 +95,16 @@ class AdvancedSettingsWidget(QGroupBox):
             return self.translations_func(key, default)
         return default
     
-    def get_values(self):
-        """Formdaki tüm değerleri dict olarak döndür"""
-        try:
-            context_size = int(self.context_size_combobox.currentText())
-        except (ValueError, TypeError):
-            context_size = 32768
-        
-        return {
-            "gpu_layers": self.gpu_layers_spinbox.value(),
-            "context_size": context_size,
-            "port": self.port_spinbox.value(),
-            "extra_args": self.extra_params_lineedit.text().strip()
-        }
+    def browse_mmproj_file(self):
+        """mmproj dosyası seç"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            None,
+            "GGUF Dosyası Seç",
+            "",
+            "GGUF Files (*.gguf);;All Files (*)"
+        )
+        if file_path:
+            self.mmproj_lineedit.setText(file_path)
     
     def apply_values(self, values):
         """Dict değerlerini form alanlarına uygula"""
@@ -136,6 +149,11 @@ class AdvancedSettingsWidget(QGroupBox):
         extra_args = values.get("extra_args")
         if extra_args is not None:
             self.extra_params_lineedit.setText(str(extra_args))
+        
+        # mmproj dosyası
+        mmproj_path = values.get("mmproj_path")
+        if mmproj_path is not None:
+            self.mmproj_lineedit.setText(str(mmproj_path))
     
     def get_widgets(self):
         """Tüm widget'ları döndür (dışarıdan erişim için)"""
@@ -148,6 +166,9 @@ class AdvancedSettingsWidget(QGroupBox):
             'port_spinbox': self.port_spinbox,
             'extra_params_label': self.extra_params_label,
             'extra_params_lineedit': self.extra_params_lineedit,
+            'mmproj_label': self.mmproj_label,
+            'mmproj_lineedit': self.mmproj_lineedit,
+            'mmproj_browse_button': self.mmproj_browse_button,
         }
     
     def update_labels(self):
@@ -166,3 +187,8 @@ class AdvancedSettingsWidget(QGroupBox):
         
         # Ek Parametreler label
         self.extra_params_label.setText(self.get_translated("label_extra_params", "Ek Parametreler:"))
+        self.extra_params_lineedit.setPlaceholderText(self.get_translated("placeholder_extra_params", "Örn: -t 8 --flash-attn"))
+        
+        # mmproj Dosyası label
+        self.mmproj_label.setText(self.get_translated("label_mmproj", "mmproj Dosyası:"))
+        self.mmproj_lineedit.setPlaceholderText(self.get_translated("placeholder_mmproj", "Örn: /home/kullanici/model.gguf"))

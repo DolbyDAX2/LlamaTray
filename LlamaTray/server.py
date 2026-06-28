@@ -176,7 +176,7 @@ class LlamaServerManager(QProcess):
         _llama_server_cached_path = "llama-server"
         return "llama-server"
 
-    def start_server(self, model_path, gpu_layers=99, context_size=8192, port=8080, extra_params=""):
+    def start_server(self, model_path, gpu_layers=99, context_size=8192, port=8080, extra_params="", mmproj_path=""):
         """
         Llama-server'ı başlat
 
@@ -186,6 +186,7 @@ class LlamaServerManager(QProcess):
             context_size: Context boyutu
             port: Sunucu portu
             extra_params: Ek parametreler
+            mmproj_path: mmproj proje dosyasının yolu (opsiyonel)
         """
         # Ön kontroller
         if self.server_running:
@@ -273,6 +274,17 @@ class LlamaServerManager(QProcess):
         args.extend(["--n-gpu-layers", str(gpu_layers)])
         args.extend(["--ctx-size", str(context_size)])
         args.extend(["--port", str(port)])
+
+        # mmproj dosyası varsa ekle
+        if mmproj_path:
+            mmproj_path = mmproj_path.strip()
+            if mmproj_path:
+                if os.path.exists(mmproj_path):
+                    args.extend(["--mmproj", mmproj_path])
+                    self.log(f"📁 mmproj file added: {mmproj_path}")
+                else:
+                    self.log(f"❌ Error: mmproj file not found: {mmproj_path}")
+                    return False
 
         # Ek parametreleri ekle - güvenli parsing
         if extra_params:

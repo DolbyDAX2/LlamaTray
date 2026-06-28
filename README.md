@@ -6,7 +6,7 @@
 
 ## English
 
-LlamaTray is a lightweight and stable PyQt6-based **Llama.cpp (llama-server)** management utility designed for Linux (specifically Arch Linux / CachyOS). Seamlessly integrating into the system tray, it allows you to start, stop, and monitor local AI models with a single click while real-time tracking system resources.
+LlamaTray is a lightweight and stable PyQt6-based **Llama.cpp (llama-server)** management utility designed for Linux. Seamlessly integrating into the system tray, it allows you to start, stop, and monitor local AI models with a single click while real-time tracking system resources.
 
 ### ✨ Features
 
@@ -21,6 +21,8 @@ LlamaTray is a lightweight and stable PyQt6-based **Llama.cpp (llama-server)** m
 - **GPU Agnostic:** Supports NVIDIA (via pynvml/nvidia-smi), AMD (via rocm-smi/sysfs), and integrated GPUs.
 - **Arch Linux Package:** Pre-built `.pkg.tar.zst` package available for easy installation via `pacman -U`.
 - **Crash Handler:** Custom exception hook that cleans up the tray icon and server process even if the application crashes.
+- **mmproj Support:** Load multi-model projects via `--mmproj` flag for complex model configurations.
+- **Command Preview:** Real-time launch command preview showing the exact `llama-server` command before starting.
 
 ### 📦 Installation
 
@@ -34,6 +36,40 @@ sudo pacman -U llamatray-1.0.0-1-any.pkg.tar.zst
 # Then launch from application menu or terminal:
 LlamaTray
 ```
+
+#### Ubuntu / Debian
+
+```bash
+# Clone the repository
+git clone https://github.com/DolbyDAX2/LlamaTray.git
+cd LlamaTray
+
+# Run the installation script (creates venv, installs deps, sets up launcher)
+chmod +x install.sh
+./install.sh
+
+# Launch from application menu or terminal:
+llamatray
+```
+
+The installer automatically detects your distribution and installs required system packages (`python3-venv`, `python3-pip`). It creates a virtual environment, installs Python dependencies, generates a launcher script at `~/.local/bin/llamatray`, and registers a `.desktop` file for your application menu.
+
+#### Fedora
+
+```bash
+# Clone the repository
+git clone https://github.com/DolbyDAX2/LlamaTray.git
+cd LlamaTray
+
+# Run the installation script
+chmod +x install.sh
+./install.sh
+
+# Launch from application menu or terminal:
+llamatray
+```
+
+The installer automatically detects Fedora and installs `python3` via `dnf` if needed.
 
 #### Manual Installation
 
@@ -67,6 +103,7 @@ makepkg -si
 LlamaTray/
 ├── .gitignore                 # Git ignore rules
 ├── README.md                  # Multi-language documentation (this file)
+├── install.sh                 # Automated installer (Ubuntu/Debian/Fedora/Arch)
 ├── requirements.txt           # Python dependencies
 ├── arch-package/              # Arch Linux PKGBUILD and build artifacts
 │   ├── PKGBUILD               # Package build script for `llamatray`
@@ -111,6 +148,7 @@ LlamaTray/
 | Context Size | Context window size (512–1,000,000) | 32768 |
 | Port | Server port (1024–65535) | 8080 |
 | Extra Parameters | Additional llama-server flags | (optional) |
+| mmproj File | Multi-model project file (.mmproj) | (optional) |
 
 **Profiles** allow you to save named configurations and instantly restore them via the dropdown. Profiles are stored in `~/.llamatray/profiles.json`.
 
@@ -151,6 +189,8 @@ LlamaTray, Linux (özellikle Arch Linux / CachyOS) için geliştirilmiş, PyQt6 
 - **GPU Bağımsız:** NVIDIA (pynvml/nvidia-smi), AMD (rocm-smi/sysfs) ve tümleşik GPU'ları destekler.
 - **Arch Linux Paketi:** Derlenmiş `.pkg.tar.zst` paketi `pacman -U` ile kolay kurulum imkanı.
 - **Crash Handler:** Uygulama çökse bile tepsi ikonunu ve sunucu sürecini temizleyen özel hata yakalama mekanizması.
+- **mmproj Desteği:** `--mmproj` flag'i ile çoklu model projelerini yükleyin.
+- **Komut Önizlemesi:** Sunucu başlatılmadan önce tam `llama-server` komutunu gösteren gerçek zamanlı önizleme.
 
 ### 📦 Kurulum
 
@@ -164,6 +204,40 @@ sudo pacman -U llamatray-1.0.0-1-any.pkg.tar.zst
 # Ardından uygulama menüsünden veya terminalden çalıştırın:
 LlamaTray
 ```
+
+#### Ubuntu / Debian
+
+```bash
+# Depoyu klonlayın
+git clone https://github.com/DolbyDAX2/LlamaTray.git
+cd LlamaTray
+
+# Kurulum betiğini çalıştırın (venv oluşturur, bağımlılıkları yükler, başlatıcı oluşturur)
+chmod +x install.sh
+./install.sh
+
+# Uygulama menüsünden veya terminalden başlatın:
+llamatray
+```
+
+Kurulum betiği dağıtımınızı otomatik olarak tespit eder ve gerekli sistem paketlerini (`python3-venv`, `python3-pip`) yükler. Sanal ortam oluşturur, Python bağımlılıklarını kurar, `~/.local/bin/llamatray` başlatma betiğini oluşturur ve uygulama menünüz için `.desktop` dosyası kaydeder.
+
+#### Fedora
+
+```bash
+# Depoyu klonlayın
+git clone https://github.com/DolbyDAX2/LlamaTray.git
+cd LlamaTray
+
+# Kurulum betiğini çalıştırın
+chmod +x install.sh
+./install.sh
+
+# Uygulama menüsünden veya terminalden başlatın:
+llamatray
+```
+
+Kurulum betiği Fedora'yı otomatik olarak tespit eder ve gerekirse `dnf` ile `python3` kurulumunu yapar.
 
 #### Manuel Kurulum
 
@@ -197,6 +271,7 @@ makepkg -si
 LlamaTray/
 ├── .gitignore                 # Git ignore kuralları
 ├── README.md                  # Çok dilli dokümantasyon (bu dosya)
+├── install.sh                 # Otomatik kurulum betiği (Ubuntu/Debian/Fedora/Arch)
 ├── requirements.txt           # Python bağımlılıkları
 ├── arch-package/              # Arch Linux PKGBUILD ve derleme çıktıları
 │   ├── PKGBUILD               # `llamatray` paketi için derleme betiği
@@ -241,6 +316,7 @@ LlamaTray/
 | Context Boyutu | Context penceresi boyutu (512–1.000.000) | 32768 |
 | Port | Sunucu portu (1024–65535) | 8080 |
 | Ek Parametreler | Ek llama-server flag'leri | (isteğe bağlı) |
+| mmproj Dosyası | Çoklu model proje dosyası (.mmproj) | (isteğe bağlı) |
 
 **Profiller** sayesinde farklı yapılandırmaları isimlendirip kaydedebilir, açılır menüden anında yükleyebilirsiniz. Profiller `~/.llamatray/profiles.json` dosyasında saklanır.
 
