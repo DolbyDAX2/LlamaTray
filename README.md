@@ -19,19 +19,23 @@ LlamaTray is a lightweight and stable PyQt6-based **Llama.cpp (llama-server)** m
 - **Persistent Settings & Profiles:** All preferences and profiles are automatically saved to `~/.llamatray/config.json` and `~/.llamatray/profiles.json`, restored on next launch.
 - **Native Linux Integration:** Native Wayland and KDE Plasma support ensuring a minimal footprint on your desktop ecosystem.
 - **GPU Agnostic:** Supports NVIDIA (via pynvml/nvidia-smi), AMD (via rocm-smi/sysfs), and integrated GPUs.
-- **Arch Linux Package:** Pre-built `.pkg.tar.zst` package available for easy installation via `pacman -U`.
+- **AUR Package:** Available on the Arch User Repository (AUR) for easy installation.
 - **Crash Handler:** Custom exception hook that cleans up the tray icon and server process even if the application crashes.
 - **mmproj Support:** Load multi-model projects via `--mmproj` flag for complex model configurations.
 - **Command Preview:** Real-time launch command preview showing the exact `llama-server` command before starting.
 
 ### 📦 Installation
 
-#### Arch Linux (Recommended)
+#### Arch Linux
 
-Download the latest `.pkg.tar.zst` from the [Releases](https://github.com/DolbyDAX2/LlamaTray/releases) page:
+Install from the AUR using your favorite AUR helper:
 
 ```bash
-sudo pacman -U llamatray-1.0.0-1-any.pkg.tar.zst
+# Using yay:
+yay -S llamatray
+
+# Or using paru:
+paru -S llamatray
 
 # Then launch from application menu or terminal:
 LlamaTray
@@ -89,14 +93,6 @@ pip install -r requirements.txt
 python -m LlamaTray
 ```
 
-#### Build from PKGBUILD
-
-```bash
-git clone https://github.com/DolbyDAX2/LlamaTray.git
-cd LlamaTray/arch-package
-makepkg -si
-```
-
 ### 📂 Repository Structure
 
 ```text
@@ -105,9 +101,6 @@ LlamaTray/
 ├── README.md                  # Multi-language documentation (this file)
 ├── install.sh                 # Automated installer (Ubuntu/Debian/Fedora/Arch)
 ├── requirements.txt           # Python dependencies
-├── arch-package/              # Arch Linux PKGBUILD and build artifacts
-│   ├── PKGBUILD               # Package build script for `llamatray`
-│   └── llamatray-1.1.2.tar.gz # Pre-built package archive
 └── LlamaTray/                 # Main Python Package Directory
     ├── __init__.py            # Package initializer
     ├── __main__.py            # Entry point for `python -m LlamaTray`
@@ -187,21 +180,25 @@ LlamaTray, Linux (özellikle Arch Linux / CachyOS) için geliştirilmiş, PyQt6 
 - **Kalıcı Ayarlar ve Profiller:** Tüm tercihler otomatik olarak `~/.llamatray/config.json` ve `~/.llamatray/profiles.json` dosyalarına kaydedilir ve bir sonraki açılışta geri yüklenir.
 - **Yerel Linux Entegrasyonu:** Wayland ve KDE Plasma desteği ile masaüstü ortamınıza minimum ayak izi bırakır.
 - **GPU Bağımsız:** NVIDIA (pynvml/nvidia-smi), AMD (rocm-smi/sysfs) ve tümleşik GPU'ları destekler.
-- **Arch Linux Paketi:** Derlenmiş `.pkg.tar.zst` paketi `pacman -U` ile kolay kurulum imkanı.
+- **AUR Paketi:** Arch User Repository (AUR) üzerinden kolay kurulum imkanı.
 - **Crash Handler:** Uygulama çökse bile tepsi ikonunu ve sunucu sürecini temizleyen özel hata yakalama mekanizması.
 - **mmproj Desteği:** `--mmproj` flag'i ile çoklu model projelerini yükleyin.
 - **Komut Önizlemesi:** Sunucu başlatılmadan önce tam `llama-server` komutunu gösteren gerçek zamanlı önizleme.
 
 ### 📦 Kurulum
 
-#### Arch Linux (Önerilen)
+#### Arch Linux
 
-En son `.pkg.tar.zst` dosyasını [Sürümler](https://github.com/DolbyDAX2/LlamaTray/releases) sayfasından indirin:
+AUR üzerinden kurulum yapın:
 
 ```bash
-sudo pacman -U llamatray-1.0.0-1-any.pkg.tar.zst
+# yay kullanarak:
+yay -S llamatray
 
-# Ardından uygulama menüsünden veya terminalden çalıştırın:
+# veya paru kullanarak:
+paru -S llamatray
+
+# Ardından uygulama menüsünden veya terminalden başlatın:
 LlamaTray
 ```
 
@@ -257,14 +254,6 @@ pip install -r requirements.txt
 python -m LlamaTray
 ```
 
-#### PKGBUILD ile Derleme
-
-```bash
-git clone https://github.com/DolbyDAX2/LlamaTray.git
-cd LlamaTray/arch-package
-makepkg -si
-```
-
 ### 📂 Depo Yapısı
 
 ```text
@@ -273,9 +262,6 @@ LlamaTray/
 ├── README.md                  # Çok dilli dokümantasyon (bu dosya)
 ├── install.sh                 # Otomatik kurulum betiği (Ubuntu/Debian/Fedora/Arch)
 ├── requirements.txt           # Python bağımlılıkları
-├── arch-package/              # Arch Linux PKGBUILD ve derleme çıktıları
-│   ├── PKGBUILD               # `llamatray` paketi için derleme betiği
-│   └── llamatray-1.1.2.tar.gz # Ön hazırlanmış paket arşivi
 └── LlamaTray/                 # Ana Python Paket Dizini
     ├── __init__.py            # Paket başlatıcı
     ├── __main__.py            # `python -m LlamaTray` giriş noktası

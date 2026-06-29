@@ -8,7 +8,8 @@ Bu modül, uygulamanın giriş noktasıdır (entry point).
 import sys
 import os
 from PyQt6.QtWidgets import QApplication
-from .ui import LlamaTray, cleanup_tray_icon
+from .ui import LlamaTray
+from .ui_utils import cleanup_tray_icon
 
 
 import traceback
