@@ -10,9 +10,10 @@ from PyQt6.QtGui import QFont
 class CommandPreviewWidget(QGroupBox):
     """Başlatma komutu önizleme widget'ı"""
 
-    def __init__(self, translations_func):
+    def __init__(self, translations_func, server_manager=None):
         super().__init__()
         self.translations_func = translations_func
+        self.server_manager = server_manager
         self._build_ui()
 
     def _build_ui(self):
@@ -36,11 +37,14 @@ class CommandPreviewWidget(QGroupBox):
 
     def build_command(self, model_path, advanced_settings):
         """Başlatma komutunu oluştur ve göster"""
-        try:
-            from ..server import LlamaServerManager
-            cmd_path = LlamaServerManager(log_callback=None).find_llama_server()
-        except Exception:
-            cmd_path = "llama-server"
+        if self.server_manager is not None:
+            cmd_path = self.server_manager.find_llama_server()
+        else:
+            try:
+                from ..server import LlamaServerManager
+                cmd_path = LlamaServerManager(log_callback=None).find_llama_server()
+            except Exception:
+                cmd_path = "llama-server"
 
         parts = [cmd_path]
 

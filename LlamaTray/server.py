@@ -9,7 +9,7 @@ import shlex
 import socket
 import time
 import shutil
-from PyQt6.QtCore import QProcess, QProcessEnvironment
+from PyQt6.QtCore import QProcess, QProcessEnvironment, QThread, pyqtSignal, QEventLoop
 
 
 def is_port_in_use(port):
@@ -23,8 +23,11 @@ def is_port_in_use(port):
         return False
 
 
-def cleanup_old_processes(port):
+def cleanup_old_processes(port, log_callback=None):
     """Eski llama-server süreçlerini temizle ve port'u boşalt"""
+    def _log(msg):
+        if log_callback:
+            log_callback(msg)
     # Port'u kontrol et ve gerekirse force close yap
     if is_port_in_use(port):
         try:
@@ -70,6 +73,27 @@ def cleanup_old_processes(port):
                     time.sleep(0.5)
         except Exception:
             pass
+
+
+class CleanupThread(QThread):
+    """Port temizliğini arka planda yapan thread (UI bloke olmaz)"""
+    cleanup_finished = pyqtSignal(bool)
+
+    def __init__(self, port, log_callback=None):
+        super().__init__()
+        self.port = port
+        self.log_callback = log_callback
+
+    def run(self):
+        cleanup_old_processes(self.port, self.log_callback)
+        # Port polling: temizlik sonrası port'un boş olup olmadığını kontrol et
+        for _ in range(6):
+            if not is_port_in_use(self.port):
+                self.cleanup_finished.emit(True)
+                return
+            time.sleep(0.5)
+        # Hala meşgulse False sinyali gönder
+        self.cleanup_finished.emit(False)
 
 
 # Cache: find_llama_server sonucu
@@ -225,22 +249,37 @@ class LlamaServerManager(QProcess):
             self.log(f"❌ Error: Port invalid ({port}). Must be between 1024 and 65535.")
             return False
 
-        # Öncesi: Eski zombi süreçleri temizle
+        # Öncesi: Eski zombi süreçleri temizle (arka plan thread ile - UI bloke olmaz)
         self.log("🧹 Cleaning up old llama-server processes and checking ports...")
-        cleanup_old_processes(port)
 
-        # Port'un boş olup olmadığını polling ile kontrol et (max 3 saniye)
-        port_cleared = False
-        for _ in range(6):
-            if not is_port_in_use(port):
-                port_cleared = True
-                break
-            time.sleep(0.5)
+        # Parametreleri sakla (continuation için)
+        self._pending_start_params = {
+            'model_path': model_path, 'gpu_layers': gpu_layers,
+            'context_size': context_size, 'port': port,
+            'extra_params': extra_params, 'mmproj_path': mmproj_path,
+        }
 
-        if not port_cleared:
+        # Non-blocking cleanup: QEventLoop ile UI responsive kalır
+        self._cleanup_thread = CleanupThread(port, self.log)
+        self._cleanup_thread.start()
+        loop = QEventLoop()
+        self._cleanup_thread.cleanup_finished.connect(loop.quit)
+        self._cleanup_thread.finished.connect(loop.quit)
+        loop.exec()
+        self._cleanup_thread.wait()
+
+        return self._continue_start_server_sync()
+
+    def _continue_start_server_sync(self):
+        """Cleanup sonrası sunucu başlatma işlemini devam ettir"""
+        p = self._pending_start_params
+        port = p['port']
+
+        if not is_port_in_use(port):
+            self.log(f"✓ Port {port} is free.")
+        else:
             self.log(f"❌ Error: Port {port} could not be cleared. Try a different port or check with lsof.")
             return False
-        self.log(f"✓ Port {port} is free.")
 
         # Port ve host'u kaydet
         self.port = port
@@ -269,7 +308,13 @@ class LlamaServerManager(QProcess):
                 self.log(f"❌ Error: Error searching for '{llama_server_cmd}'.")
                 return False
 
-        # Komutu oluştur
+        # Komutu oluştur (_pending_start_params'ten oku)
+        model_path = p['model_path']
+        gpu_layers = p['gpu_layers']
+        context_size = p['context_size']
+        extra_params = p['extra_params']
+        mmproj_path = p['mmproj_path']
+
         args = ["-m", model_path]
         args.extend(["--n-gpu-layers", str(gpu_layers)])
         args.extend(["--ctx-size", str(context_size)])
@@ -371,17 +416,21 @@ class LlamaServerManager(QProcess):
         # 2. Süreç grubunu temizle (terminate + wait)
         self.cleanup_server_process()
 
-        # 3. Son kontrol: port hala açık mı? (polling ile)
-        port_cleared = False
-        for _ in range(6):
-            if not is_port_in_use(self.port):
-                port_cleared = True
-                break
-            time.sleep(0.5)
-
-        if not port_cleared:
+        # 3. Son kontrol: port hala açık mı? (arka plan thread ile - UI bloke olmaz)
+        if is_port_in_use(self.port):
             self.log(f"⚠ Port {self.port} is still in use, forcefully cleaning...")
-            cleanup_old_processes(self.port)
+            cleanup_thread = CleanupThread(self.port, self.log)
+            loop = QEventLoop()
+            cleanup_thread.cleanup_finished.connect(loop.quit)
+            cleanup_thread.finished.connect(loop.quit)
+            cleanup_thread.start()
+            loop.exec()
+            cleanup_thread.wait()
+
+            if not is_port_in_use(self.port):
+                self.log(f"✓ Port {self.port} cleared.")
+            else:
+                self.log(f"⚠ Warning: Port {self.port} could not be cleared.")
 
         self.server_running = False
         self.log("=" * 60)

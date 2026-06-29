@@ -30,24 +30,38 @@ class LlamaTray:
         ui_utils._tray_instance = self
         self.translations = load_translations()
         self.current_language = "tr"
-        # Geçici log fonksiyonu (log_window henüz tam oluşturulmadı)
-        def _early_log(msg):
-            print(msg)
-        self.server_manager = LlamaServerManager(log_callback=_early_log)
-        self.system_monitor = SystemMonitor()
+
+        # 1. Tüm temel özellikleri ve widget'ları önce belleğe al
         self.model_path = ""
         self.timer = QTimer()
+        self.log = lambda msg: print(msg)  # Geçici log (log_window henüz yok)
+        self.server_manager = LlamaServerManager(log_callback=self.log)
+        self.system_monitor = SystemMonitor()
+
+        # 2. Tray icon oluştur (get_translated hazır, widget'lar henüz gerekmiyor)
         self._init_tray_icon()
+
+        # 3. Ana pencere ve tüm widget'ları oluştur
         self._init_main_window()
+
+        # 4. Şimdi tüm widget'lar ve self.log hazır — sinyalleri bağla
         self.server_manager.started.connect(self.server_controls.on_server_started)
         self.server_manager.finished.connect(self.server_controls.on_server_finished)
         self.server_manager.errorOccurred.connect(self.server_controls.on_server_error)
+
+        # 5. Konfigürasyon yükle (self.log artık log_window'a yazıyor, widget'lar mevcut)
         self.load_config()
         self.model_selector.set_model_path(self.model_path)
         self.profile_manager.refresh_combobox()
+
+        # 6. Çevirileri uygula (tüm widget'lar + tray action'ları hazır)
         self.apply_translations()
+
+        # 7. Timer'ı başlat
         self.timer.timeout.connect(self.update_system_monitor)
         self.timer.start(1000)
+
+        # 8. Uygulama kapanış temizliği
         try:
             app = QApplication.instance()
             if app: app.aboutToQuit.connect(self.cleanup_tray)
@@ -93,7 +107,7 @@ class LlamaTray:
             translations_func=tr, server_manager=self.server_manager,
             advanced_settings=self.advanced_settings, timer=self.timer,
             log_func=self.log)
-        self.command_preview = CommandPreviewWidget(tr)
+        self.command_preview = CommandPreviewWidget(tr, self.server_manager)
         self.profile_manager = ProfileManagerWidget(translations_func=tr, callbacks={
             'log': self.log, 'get_form_values': self.get_current_form_values,
             'apply_profile_values': self.apply_profile_values,
