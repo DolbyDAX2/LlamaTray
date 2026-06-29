@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# LlamaTray — Installation Script (v1.2.0)
+# LlamaTray — Installation Script (v1.2.1)
 # Supports: Ubuntu/Debian, Fedora
 #
 set -euo pipefail
@@ -124,6 +124,7 @@ PROJECT_DIR="$INSTALL_DIR"
 VENV_DIR="$PROJECT_DIR/venv"
 
 # Activate virtual environment and run
+cd "$PROJECT_DIR"
 exec "$VENV_DIR/bin/python" -m LlamaTray "\$@"
 LAUNCHER_EOF
 
@@ -163,7 +164,7 @@ DESKTOP_EOF
 main() {
     echo ""
     echo "========================================"
-    echo "  LlamaTray v1.2.0 Installer"
+    echo "  LlamaTray v1.2.1 Installer"
     echo "========================================"
     echo ""
 
