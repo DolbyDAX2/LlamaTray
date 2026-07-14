@@ -7,6 +7,18 @@ from PyQt6.QtWidgets import (
     QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox, QComboBox,
     QLineEdit, QPushButton, QFileDialog
 )
+from PyQt6.QtCore import QVariant
+
+# Sampler preset değerleri - dil bağımsız anahtarlar kullanılır
+SAMPLER_PRESETS = {
+    "neutral": "--temp 0.7 --top-p 0.9 --top-k 40 --min-p 0.0 --repeat-penalty 1.0",
+    "balanced": "--temp 0.5 --top-p 0.95 --top-k 20 --min-p 0.0 --repeat-penalty 1.05",
+    "creative": "--temp 1.0 --top-p 0.99 --top-k 100 --min-p 0.0 --repeat-penalty 1.0",
+    "precise": "--temp 0.1 --top-p 0.5 --top-k 10 --min-p 0.0 --repeat-penalty 1.1",
+}
+
+# Preset anahtar sırası: custom, neutral, balanced, creative, precise
+SAMPLER_PRESET_KEYS = ["custom", "neutral", "balanced", "creative", "precise"]
 
 
 class AdvancedSettingsWidget(QGroupBox):
@@ -19,8 +31,29 @@ class AdvancedSettingsWidget(QGroupBox):
         """
         super().__init__()
         self.translations_func = translations_func
+        self._current_preset_key = "custom"  # Dil bağımsız mevcut preset anahtarı
         
         self._init_ui()
+    
+    def _on_preset_changed(self, preset_name):
+        """Preset değişince ek parametreleri otomatik doldur"""
+        # userData'dan dil bağımsız anahtarı al
+        key = self.preset_combobox.currentData()
+        if key and key in SAMPLER_PRESETS:
+            self._current_preset_key = key
+            self.extra_params_lineedit.blockSignals(True)
+            self.extra_params_lineedit.setText(SAMPLER_PRESETS[key])
+            self.extra_params_lineedit.blockSignals(False)
+    
+    def _on_extra_params_changed(self, text):
+        """Kullanıcı ek parametreleri elle değiştirdiğinde preset'i 'custom'a çek"""
+        current_key = self._current_preset_key
+        if current_key in SAMPLER_PRESETS and text != SAMPLER_PRESETS[current_key]:
+            self.preset_combobox.blockSignals(True)
+            # custom anahtarının index'i 0'dır
+            self.preset_combobox.setCurrentIndex(0)
+            self._current_preset_key = "custom"
+            self.preset_combobox.blockSignals(False)
     
     def _init_ui(self):
         """UI'yi başlat"""
@@ -60,11 +93,30 @@ class AdvancedSettingsWidget(QGroupBox):
         port_row.addWidget(self.port_label)
         port_row.addWidget(self.port_spinbox)
         
+        # Sampler Preset Dropdown (Ek Parametrelerin üstüne)
+        preset_row = QHBoxLayout()
+        self.preset_label = QLabel(self.get_translated("preset_label", "Sampler Preset:"))
+        self.preset_combobox = QComboBox()
+        # Dil bağımsız anahtarlarla öğeleri ekle, userData olarak anahtarı sakla
+        for key in SAMPLER_PRESET_KEYS:
+            if key == "custom":
+                display_text = self.get_translated("preset_custom", "Özel")
+            else:
+                translation_key = f"preset_{key}"
+                fallback = {"neutral": "Nötr", "balanced": "Dengeli", "creative": "Yaratıcı", "precise": "Kesin"}[key]
+                display_text = self.get_translated(translation_key, fallback)
+            self.preset_combobox.addItem(display_text, QVariant(key))
+        self.preset_combobox.setCurrentIndex(0)
+        self.preset_combobox.currentTextChanged.connect(self._on_preset_changed)
+        preset_row.addWidget(self.preset_label)
+        preset_row.addWidget(self.preset_combobox)
+        
         # Ek Parametreler
         extra_row = QHBoxLayout()
         self.extra_params_label = QLabel(self.get_translated("label_extra_params", "Ek Parametreler:"))
         self.extra_params_lineedit = QLineEdit()
         self.extra_params_lineedit.setPlaceholderText(self.get_translated("placeholder_extra_params", "Örn: -t 8 --flash-attn"))
+        self.extra_params_lineedit.textChanged.connect(self._on_extra_params_changed)
         extra_row.addWidget(self.extra_params_label)
         extra_row.addWidget(self.extra_params_lineedit)
         
@@ -84,6 +136,7 @@ class AdvancedSettingsWidget(QGroupBox):
         layout.addLayout(gpu_row)
         layout.addLayout(context_row)
         layout.addLayout(port_row)
+        layout.addLayout(preset_row)
         layout.addLayout(extra_row)
         layout.addLayout(mmproj_row)
         
@@ -148,7 +201,32 @@ class AdvancedSettingsWidget(QGroupBox):
         # Ek parametreler
         extra_args = values.get("extra_args")
         if extra_args is not None:
+            self.extra_params_lineedit.blockSignals(True)
             self.extra_params_lineedit.setText(str(extra_args))
+            self.extra_params_lineedit.blockSignals(False)
+            
+            # Parametreye uygun preset'i bul ve seç
+            matched_key = None
+            for key, value in SAMPLER_PRESETS.items():
+                if str(extra_args) == value:
+                    matched_key = key
+                    break
+            
+            if matched_key:
+                self.preset_combobox.blockSignals(True)
+                self._current_preset_key = matched_key
+                # userData'ya göre doğru index'i bul
+                for i in range(self.preset_combobox.count()):
+                    if self.preset_combobox.itemData(i) == matched_key:
+                        self.preset_combobox.setCurrentIndex(i)
+                        break
+                self.preset_combobox.blockSignals(False)
+            else:
+                # Hiçbir preset'e uymuyor, custom seç
+                self.preset_combobox.blockSignals(True)
+                self._current_preset_key = "custom"
+                self.preset_combobox.setCurrentIndex(0)
+                self.preset_combobox.blockSignals(False)
         
         # mmproj dosyası
         mmproj_path = values.get("mmproj_path")
@@ -164,6 +242,8 @@ class AdvancedSettingsWidget(QGroupBox):
             'context_size_combobox': self.context_size_combobox,
             'port_label': self.port_label,
             'port_spinbox': self.port_spinbox,
+            'preset_label': self.preset_label,
+            'preset_combobox': self.preset_combobox,
             'extra_params_label': self.extra_params_label,
             'extra_params_lineedit': self.extra_params_lineedit,
             'mmproj_label': self.mmproj_label,
@@ -184,6 +264,32 @@ class AdvancedSettingsWidget(QGroupBox):
         
         # Port label
         self.port_label.setText(self.get_translated("label_port", "Port:"))
+        
+        # Sampler Preset label
+        self.preset_label.setText(self.get_translated("preset_label", "Sampler Preset:"))
+        # Preset combobox öğelerini güncelle - mevcut preset anahtarını koru
+        self.preset_combobox.blockSignals(True)
+        self.preset_combobox.clear()
+        
+        for key in SAMPLER_PRESET_KEYS:
+            if key == "custom":
+                display_text = self.get_translated("preset_custom", "Özel")
+            else:
+                translation_key = f"preset_{key}"
+                fallback = {"neutral": "Nötr", "balanced": "Dengeli", "creative": "Yaratıcı", "precise": "Kesin"}[key]
+                display_text = self.get_translated(translation_key, fallback)
+            self.preset_combobox.addItem(display_text, QVariant(key))
+        
+        # Mevcut preset anahtarına göre doğru index'i bul ve seç
+        current_key = self._current_preset_key
+        for i in range(self.preset_combobox.count()):
+            if self.preset_combobox.itemData(i) == current_key:
+                self.preset_combobox.setCurrentIndex(i)
+                break
+        else:
+            self.preset_combobox.setCurrentIndex(0)  # Varsayılan: Özel
+        
+        self.preset_combobox.blockSignals(False)
         
         # Ek Parametreler label
         self.extra_params_label.setText(self.get_translated("label_extra_params", "Ek Parametreler:"))

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# LlamaTray — Installation Script (v1.2.1)
+# LlamaTray — Installation Script (v1.3.0)
 # Supports: Ubuntu/Debian, Fedora
 #
 set -euo pipefail
@@ -164,7 +164,7 @@ DESKTOP_EOF
 main() {
     echo ""
     echo "========================================"
-    echo "  LlamaTray v1.2.1 Installer"
+    echo "  LlamaTray v1.3.0 Installer"
     echo "========================================"
     echo ""
 
