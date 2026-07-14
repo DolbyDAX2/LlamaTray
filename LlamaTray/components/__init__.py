@@ -10,6 +10,7 @@ from .about_dialog import AboutDialog
 from .command_preview import CommandPreviewWidget
 from .server_controls import ServerControlsWidget
 from .model_selector import ModelSelectorWidget
+from .hf_downloader import HfDownloaderDialog
 
 __all__ = [
     "SystemMonitorWidget",
@@ -19,4 +20,5 @@ __all__ = [
     "CommandPreviewWidget",
     "ServerControlsWidget",
     "ModelSelectorWidget",
+    "HfDownloaderDialog",
 ]

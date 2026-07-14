@@ -7,7 +7,7 @@ import os
 import json
 from PyQt6.QtWidgets import (
     QApplication, QSystemTrayIcon, QFileDialog, QMessageBox, QMainWindow,
-    QTextEdit, QVBoxLayout, QHBoxLayout, QComboBox, QWidget,
+    QTextEdit, QVBoxLayout, QHBoxLayout, QComboBox, QWidget, QDialog,
     QMenu, QPushButton, QInputDialog, QDialogButtonBox
 )
 from PyQt6.QtGui import QIcon, QAction
@@ -20,6 +20,7 @@ from .server import LlamaServerManager
 from .components import (
     SystemMonitorWidget, AdvancedSettingsWidget, ProfileManagerWidget,
     AboutDialog, CommandPreviewWidget, ServerControlsWidget, ModelSelectorWidget,
+    HfDownloaderDialog,
 )
 
 
@@ -121,6 +122,7 @@ class LlamaTray:
 
         # Sinyaller
         self.model_selector.get_browse_button().clicked.connect(self.browse_file)
+        self.model_selector.get_hf_download_button().clicked.connect(self.hf_download)
         self.server_controls.start_server_button.clicked.connect(lambda: self.start_server())
         self.server_controls.stop_server_button.clicked.connect(lambda: self.stop_server())
         self.server_controls.open_web_ui_button.setEnabled(False)
@@ -128,6 +130,7 @@ class LlamaTray:
         for w, sig in [(self.advanced_settings.gpu_layers_spinbox, 'valueChanged'),
                        (self.advanced_settings.context_size_combobox, 'currentTextChanged'),
                        (self.advanced_settings.port_spinbox, 'valueChanged'),
+                       (self.advanced_settings.preset_combobox, 'currentTextChanged'),
                        (self.advanced_settings.extra_params_lineedit, 'textChanged'),
                        (self.advanced_settings.mmproj_lineedit, 'textChanged')]:
             getattr(w, sig).connect(self.build_command_preview)
@@ -165,7 +168,7 @@ class LlamaTray:
 
         self.window = QMainWindow()
         cw = QWidget(); cw.setLayout(self.layout); self.window.setCentralWidget(cw)
-        self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {tr('version', 'v1.2.1')}")
+        self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {tr('version', 'v1.3.0')}")
         self.window.setGeometry(100, 100, 450, 750)
         # ProfileManager'a window referansını ver
         self.profile_manager.callbacks['window'] = self.window
@@ -180,7 +183,10 @@ class LlamaTray:
             except Exception as ex:
                 self.log(tr("log_close_error", "⚠ Kapanış sırasında hata: {error}").format(error=ex))
             finally:
-                (orig_close if callable(orig_close) else QMainWindow.closeEvent)(self.window, e)
+                if orig_close and callable(orig_close):
+                    orig_close(e)
+                else:
+                    e.accept()
                 try: self.cleanup_tray()
                 except Exception: pass
         self.window.closeEvent = win_close
@@ -228,7 +234,7 @@ class LlamaTray:
             self.language_combo.setCurrentIndex(1 if self.current_language == "en" else 0)
             self.language_combo.blockSignals(False)
         if hasattr(self, 'window'):
-            self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {tr('version', 'v1.2.1')}")
+            self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {tr('version', 'v1.3.0')}")
 
     def show_about_dialog(self):
         AboutDialog(translations_func=self.get_translated, icon_path=get_icon_path(),
@@ -374,6 +380,19 @@ class LlamaTray:
                 self.build_command_preview()
         except Exception as e:
             self.log(f"❌ Hata: Model seçilirken hata - {type(e).__name__}: {e}")
+
+    def hf_download(self):
+        """HuggingFace'den model indir"""
+        dialog = HfDownloaderDialog(translations_func=self.get_translated, parent=getattr(self, 'window', None))
+        if dialog.exec():
+            path = dialog.get_downloaded_path()
+            if path and os.path.exists(path):
+                self.model_path = path
+                self.model_selector.set_model_path(path)
+                sz = os.path.getsize(path) / (1024 * 1024)
+                self.log(self.get_translated("log_model_selected", "✓ Model seçildi: {file_path}").format(file_path=path))
+                self.log(self.get_translated("log_file_size", "  Dosya boyutu: {size:.2f} MB").format(size=sz))
+                self.build_command_preview()
 
     def cleanup_tray(self):
         try:
