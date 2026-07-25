@@ -7,6 +7,8 @@ from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QHBoxLayout, QComboBox
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt
 
+from ..version import VERSION_DISPLAY
+
 
 class AboutDialog(QDialog):
     """Hakkında penceresi - dil desteği ile"""
@@ -99,7 +101,7 @@ class AboutDialog(QDialog):
         # translations_func'u kullan (ana uygulamadan gelen çeviri fonksiyonu)
         # veya varsayılan değerler
         app_name = self.get_translated("app_name", "🦙 LlamaTray")
-        version = self.get_translated("version", "v1.1.3")
+        version = VERSION_DISPLAY
         developer = self.get_translated("developer", "Geliştirici: Fatih Durdu")
         description = self.get_translated("description", "Linux (Arch Linux / CachyOS) sistemler için minimalist, hafif ve zombi süreç önleme mekanizmasına sahip PyQt6 tabanlı Llama.cpp (llama-server) yönetim aracı.")
         website = self.get_translated("website", "Kişisel Web Sitesi")

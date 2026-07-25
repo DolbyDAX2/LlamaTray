@@ -32,8 +32,9 @@ arch-package/LlamaTray/packed-refs
 # Hata raporu - yerel analiz dosyasi, push edilmez
 HATA_RAPORU.md
 
-# Code review report - local analysis file
+# Code review reports - local analysis files
 code-review-report.md
+code-rewiew-report-sol.md
 
 # Release notes - local draft
 release-notes*.md

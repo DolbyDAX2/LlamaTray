@@ -9,13 +9,16 @@ import webbrowser
 class ServerControlsWidget(QWidget):
     """Sunucu kontrol butonları widget'ı"""
 
-    def __init__(self, translations_func, server_manager, advanced_settings, timer, log_func):
+    def __init__(self, translations_func, server_manager, advanced_settings, timer,
+                 log_func, router_settings=None, router_mode_func=None):
         super().__init__()
         self.translations_func = translations_func
         self.server_manager = server_manager
         self.advanced_settings = advanced_settings
         self.timer = timer
         self.log = log_func
+        self.router_settings = router_settings
+        self.router_mode_func = router_mode_func or (lambda: False)
         self._build_ui()
 
     def _build_ui(self):
@@ -46,6 +49,14 @@ class ServerControlsWidget(QWidget):
             port = self.advanced_settings.port_spinbox.value()
             extra_params = self.advanced_settings.extra_params_lineedit.text().strip()
             mmproj_path = self.advanced_settings.mmproj_lineedit.text().strip()
+            router_mode = self.router_mode_func()
+            models_dir = ""
+            no_models_autoload = True
+            jinja = True
+            if self.router_settings:
+                models_dir = self.router_settings.models_dir_lineedit.text().strip()
+                no_models_autoload = not self.router_settings.no_autoload_checkbox.isChecked()
+                jinja = self.router_settings.jinja_checkbox.isChecked()
             self.start_server_button.setEnabled(False)
             self.stop_server_button.setEnabled(False)
             self.log("=" * 60)
@@ -53,7 +64,9 @@ class ServerControlsWidget(QWidget):
             success = self.server_manager.start_server(
                 model_path=model_path, gpu_layers=gpu_layers,
                 context_size=context_size, port=port,
-                extra_params=extra_params, mmproj_path=mmproj_path
+                extra_params=extra_params, mmproj_path=mmproj_path,
+                router_mode=router_mode, models_dir=models_dir,
+                no_models_autoload=no_models_autoload, jinja=jinja
             )
             if success:
                 self.timer.start(1000)

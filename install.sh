@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 #
-# LlamaTray — Installation Script (v1.3.0)
+# LlamaTray — Installation Script
 # Supports: Ubuntu/Debian, Fedora
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERSION_FILE="$SCRIPT_DIR/LlamaTray/version.py"
+APP_VERSION="$(awk -F'"' '/^__version__ = / {print $2; exit}' "$VERSION_FILE")"
 PROJECT_DIR="$SCRIPT_DIR"
 INSTALL_DIR="$SCRIPT_DIR"
 HOME_DIR="$HOME"
@@ -22,6 +24,11 @@ NC='\033[0m' # No Color
 info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; }
+
+if [ -z "$APP_VERSION" ]; then
+    error "Version could not be read from $VERSION_FILE"
+    exit 1
+fi
 
 # Detect distribution
 detect_distro() {
@@ -164,7 +171,7 @@ DESKTOP_EOF
 main() {
     echo ""
     echo "========================================"
-    echo "  LlamaTray v1.3.0 Installer"
+    echo "  LlamaTray v$APP_VERSION Installer"
     echo "========================================"
     echo ""
 

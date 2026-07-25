@@ -1,11 +1,12 @@
 """
 HuggingFace Model İndirici Dialogu.
 HuggingFace Hub'dan model dosyalarını indirmek için kullanılır.
-v1.3.0 — Model arama özelliği eklenmiştir.
 """
 
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import requests
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -139,10 +140,11 @@ class SearchThread(QThread):
 
 
 class FilesThread(QThread):
-    """HuggingFace API'den repo dosyalarını çeken thread"""
+    """HuggingFace API'den repo dosyalarını ve boyutlarını çeken thread."""
     progress = pyqtSignal(str)
     finished = pyqtSignal(list)  # list of (filename, size_bytes) tuples
     error = pyqtSignal(str)
+    _cache = {}
 
     def __init__(self, repo_id: str, translations_func=None):
         super().__init__()
@@ -177,28 +179,80 @@ class FilesThread(QThread):
             pass
         return 0
 
+    def _get_files_from_tree_api(self):
+        """Tree API ile tüm dosya adlarını ve boyutlarını toplu olarak al."""
+        url = f"https://huggingface.co/api/models/{self.repo_id}/tree/main"
+        params = {"recursive": "true", "expand": "false"}
+        files = []
+        session = requests.Session()
+
+        while url:
+            response = session.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            entries = response.json()
+            if not isinstance(entries, list):
+                raise ValueError("Unexpected HuggingFace Tree API response")
+
+            for entry in entries:
+                fname = entry.get("path", "")
+                if entry.get("type") == "file" and fname.lower().endswith(".gguf"):
+                    # Normal size alanını, yoksa LFS metadata boyutunu kullan.
+                    size = entry.get("size") or (entry.get("lfs") or {}).get("size") or 0
+                    files.append((fname, int(size)))
+
+            # HuggingFace büyük repoları Link başlığıyla sayfalayabilir.
+            next_link = response.links.get("next", {}).get("url")
+            url = next_link
+            params = None
+
+        return files
+
+    def _get_files_from_model_api(self):
+        """Tree API kullanılamazsa eski metadata endpoint'ine geri dön."""
+        url = f"https://huggingface.co/api/models/{self.repo_id}"
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        siblings = response.json().get("siblings", [])
+        files = []
+        missing = []
+        for sibling in siblings:
+            fname = sibling.get("rfilename", "")
+            if not fname.lower().endswith(".gguf"):
+                continue
+            size = sibling.get("size") or (sibling.get("lfs") or {}).get("size") or 0
+            if size:
+                files.append((fname, int(size)))
+            else:
+                missing.append(fname)
+
+        # Nadir fallback durumunda boyut sorgularını sırayla değil paralel yap.
+        if missing:
+            with ThreadPoolExecutor(max_workers=min(8, len(missing))) as executor:
+                futures = {executor.submit(self._get_file_size, name): name for name in missing}
+                for future in as_completed(futures):
+                    files.append((futures[future], future.result()))
+        return files
+
     def run(self):
         try:
             self.progress.emit(self.get_translated("hf_loading_files", "Loading files..."))
-            url = f"https://huggingface.co/api/models/{self.repo_id}"
-            response = requests.get(url, timeout=30)
-            if response.status_code != 200:
-                api_err = self.get_translated("hf_api_error", "API error")
-                self.error.emit(f"HTTP {response.status_code}: {api_err}")
+            cached = self._cache.get(self.repo_id)
+            if cached is not None:
+                self.finished.emit(list(cached))
                 return
 
-            data = response.json()
-            siblings = data.get("siblings", [])
-            gguf_files = []
-            for sibling in siblings:
-                fname = sibling.get("rfilename", "")
-                if fname.lower().endswith(".gguf"):
-                    # HF API'de 'size' genellikle yok; HEAD ile al
-                    size = sibling.get("size") or self._get_file_size(fname)
-                    gguf_files.append((fname, size))
-            # Sort alphabetically by filename
-            gguf_files.sort(key=lambda x: x[0])
+            try:
+                gguf_files = self._get_files_from_tree_api()
+            except (requests.RequestException, ValueError):
+                gguf_files = self._get_files_from_model_api()
+
+            gguf_files.sort(key=lambda item: item[0].lower())
+            self._cache[self.repo_id] = list(gguf_files)
             self.finished.emit(gguf_files)
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else "?"
+            api_err = self.get_translated("hf_api_error", "API error")
+            self.error.emit(f"HTTP {status}: {api_err}")
         except Exception as e:
             self.error.emit(str(e))
 
@@ -210,9 +264,10 @@ class FilesThread(QThread):
 class HfDownloaderDialog(QDialog):
     """HuggingFace'den model indirme dialogu — Arama + Manuel sekmeler"""
 
-    def __init__(self, translations_func=None, parent=None):
+    def __init__(self, translations_func=None, parent=None, initial_folder=""):
         super().__init__(parent)
         self.translations_func = translations_func
+        self.initial_folder = initial_folder
         self.download_thread = None
         self.search_thread = None
         self.files_thread = None
@@ -269,6 +324,8 @@ class HfDownloaderDialog(QDialog):
         folder_layout = QHBoxLayout()
         self.folder_label = QLabel(self.get_translated("hf_label_folder", "İndirme Klasörü:"))
         self.folder_input = QLineEdit()
+        if self.initial_folder:
+            self.folder_input.setText(self.initial_folder)
         self.folder_browse = QPushButton("📁")
         self.folder_browse.setFixedWidth(32)
         self.folder_browse.clicked.connect(self._browse_folder)
@@ -467,6 +524,9 @@ class HfDownloaderDialog(QDialog):
     def _on_model_clicked(self, item: QListWidgetItem):
         """Model seçildi → dosyalarını çek"""
         repo_id = item.data(Qt.ItemDataRole.UserRole)
+        if self.files_thread and self.files_thread.isRunning():
+            return
+        self.model_list.setEnabled(False)
         self.file_list.clear()
         self.status_label.setText(self.get_translated("hf_loading_files", "Dosyalar yükleniyor..."))
         self.status_label.setStyleSheet("color: blue; font-style: italic;")
@@ -484,6 +544,7 @@ class HfDownloaderDialog(QDialog):
     def _on_files_results(self, files: list):
         """files: list of (filename, size_bytes) tuples"""
         self.files_thread.wait()
+        self.model_list.setEnabled(True)
         self.file_list.clear()
         for fname, size in files:
             display = f"{fname}  ({self._fmt_size(size)})"
@@ -502,6 +563,7 @@ class HfDownloaderDialog(QDialog):
 
     def _on_files_error(self, error_msg):
         self.files_thread.wait()
+        self.model_list.setEnabled(True)
         self.status_label.setText(
             self.get_translated("hf_files_error_status", "❌ Dosya listesi hatası: {error}").format(error=error_msg))
         self.status_label.setStyleSheet("color: red; font-style: italic;")
