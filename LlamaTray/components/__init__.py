@@ -11,6 +11,7 @@ from .command_preview import CommandPreviewWidget
 from .server_controls import ServerControlsWidget
 from .model_selector import ModelSelectorWidget
 from .hf_downloader import HfDownloaderDialog
+from .router_settings import RouterSettingsWidget
 
 __all__ = [
     "SystemMonitorWidget",
@@ -21,4 +22,5 @@ __all__ = [
     "ServerControlsWidget",
     "ModelSelectorWidget",
     "HfDownloaderDialog",
+    "RouterSettingsWidget",
 ]

@@ -58,6 +58,12 @@ class ModelSelectorWidget(QWidget):
             self.model_label.setText("")
             self.model_label.setStyleSheet("color: gray; font-style: italic;")
 
+    def set_router_mode(self, enabled):
+        """Router modunda tek-model alanlarını gizler, HF indirmeyi açık tutar."""
+        self.browse_button.setVisible(not enabled)
+        self.model_label.setVisible(not enabled)
+        self.hf_download_button.setVisible(True)
+
     def update_labels(self):
         """Çeviri etiketlerini güncelle"""
         if hasattr(self, 'browse_button'):

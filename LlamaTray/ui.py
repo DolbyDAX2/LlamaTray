@@ -8,19 +8,21 @@ import json
 from PyQt6.QtWidgets import (
     QApplication, QSystemTrayIcon, QFileDialog, QMessageBox, QMainWindow,
     QTextEdit, QVBoxLayout, QHBoxLayout, QComboBox, QWidget, QDialog,
-    QMenu, QPushButton, QInputDialog, QDialogButtonBox
+    QMenu, QPushButton, QInputDialog, QDialogButtonBox, QTabWidget,
+    QGroupBox, QRadioButton, QLineEdit
 )
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import QTimer
 
 import LlamaTray.ui_utils as ui_utils
 from .ui_utils import load_translations, get_icon_path
+from .version import VERSION_DISPLAY
 from .monitor import SystemMonitor
 from .server import LlamaServerManager
 from .components import (
     SystemMonitorWidget, AdvancedSettingsWidget, ProfileManagerWidget,
     AboutDialog, CommandPreviewWidget, ServerControlsWidget, ModelSelectorWidget,
-    HfDownloaderDialog,
+    HfDownloaderDialog, RouterSettingsWidget,
 )
 
 
@@ -49,6 +51,9 @@ class LlamaTray:
         self.server_manager.started.connect(self.server_controls.on_server_started)
         self.server_manager.finished.connect(self.server_controls.on_server_finished)
         self.server_manager.errorOccurred.connect(self.server_controls.on_server_error)
+        self.server_manager.started.connect(self._on_router_server_started)
+        self.server_manager.finished.connect(lambda _code, _status: self.router_settings.stop_polling())
+        self.server_manager.errorOccurred.connect(lambda _error: self.router_settings.stop_polling())
 
         # 5. Konfigürasyon yükle (self.log artık log_window'a yazıyor, widget'lar mevcut)
         self.load_config()
@@ -104,10 +109,27 @@ class LlamaTray:
         # Modüler bileşenler
         self.model_selector = ModelSelectorWidget(tr)
         self.advanced_settings = AdvancedSettingsWidget(translations_func=tr)
+        self.router_settings = RouterSettingsWidget(
+            translations_func=tr,
+            port_func=lambda: self.advanced_settings.port_spinbox.value(),
+            log_func=self.log)
+        self.mode_group = QGroupBox()
+        mode_layout = QHBoxLayout(self.mode_group)
+        self.single_mode_radio = QRadioButton()
+        self.router_mode_radio = QRadioButton()
+        self.single_mode_radio.setChecked(True)
+        self.mode_group.setCheckable(True)
+        self.mode_group.setChecked(True)
+        self.mode_group.toggled.connect(self._toggle_mode_group)
+        mode_layout.addWidget(self.single_mode_radio)
+        mode_layout.addWidget(self.router_mode_radio)
+        mode_layout.addStretch()
+        self.router_settings.setVisible(False)
         self.server_controls = ServerControlsWidget(
             translations_func=tr, server_manager=self.server_manager,
             advanced_settings=self.advanced_settings, timer=self.timer,
-            log_func=self.log)
+            log_func=self.log, router_settings=self.router_settings,
+            router_mode_func=self.is_router_mode)
         self.command_preview = CommandPreviewWidget(tr, self.server_manager)
         self.profile_manager = ProfileManagerWidget(translations_func=tr, callbacks={
             'log': self.log, 'get_form_values': self.get_current_form_values,
@@ -127,6 +149,12 @@ class LlamaTray:
         self.server_controls.stop_server_button.clicked.connect(lambda: self.stop_server())
         self.server_controls.open_web_ui_button.setEnabled(False)
         self.server_controls.open_web_ui_button.clicked.connect(lambda: self.server_controls.open_web_ui())
+        self.single_mode_radio.toggled.connect(self.on_mode_changed)
+        for widget in (self.router_settings.models_dir_lineedit,
+                       self.router_settings.no_autoload_checkbox,
+                       self.router_settings.jinja_checkbox):
+            signal = widget.textChanged if isinstance(widget, QLineEdit) else widget.toggled
+            signal.connect(self.build_command_preview)
         for w, sig in [(self.advanced_settings.gpu_layers_spinbox, 'valueChanged'),
                        (self.advanced_settings.context_size_combobox, 'currentTextChanged'),
                        (self.advanced_settings.port_spinbox, 'valueChanged'),
@@ -158,18 +186,38 @@ class LlamaTray:
         bottom.addWidget(self.about_button)
         bottom.addStretch()
 
-        # Ana layout
+        # Sekmeli ana layout
+        self.tabs = QTabWidget()
+        self.main_tab = QWidget()
+        main_layout = QVBoxLayout(self.main_tab)
+        for widget in (self.log_window, self.model_selector,
+                       self.server_controls, self.monitor_widget):
+            main_layout.addWidget(widget)
+        main_layout.addStretch()
+
+        self.settings_tab = QWidget()
+        settings_layout = QVBoxLayout(self.settings_tab)
+        for widget in (self.mode_group, self.advanced_settings,
+                       self.router_settings, self.command_preview):
+            settings_layout.addWidget(widget)
+        settings_layout.addStretch()
+
+        self.profiles_tab = QWidget()
+        profiles_layout = QVBoxLayout(self.profiles_tab)
+        profiles_layout.addWidget(self.profile_manager)
+        profiles_layout.addStretch()
+
+        self.tabs.addTab(self.main_tab, "")
+        self.tabs.addTab(self.settings_tab, "")
+        self.tabs.addTab(self.profiles_tab, "")
         self.layout = QVBoxLayout()
-        for w in [self.log_window, self.model_selector, self.server_controls,
-                  self.advanced_settings, self.command_preview,
-                  self.profile_manager, self.monitor_widget]:
-            self.layout.addWidget(w)
+        self.layout.addWidget(self.tabs)
         self.layout.addLayout(bottom)
 
         self.window = QMainWindow()
         cw = QWidget(); cw.setLayout(self.layout); self.window.setCentralWidget(cw)
-        self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {tr('version', 'v1.3.0')}")
-        self.window.setGeometry(100, 100, 450, 750)
+        self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {VERSION_DISPLAY}")
+        self.window.setGeometry(100, 100, 560, 680)
         # ProfileManager'a window referansını ver
         self.profile_manager.callbacks['window'] = self.window
 
@@ -196,14 +244,42 @@ class LlamaTray:
     def get_translated(self, key, default=""):
         return self.translations.get(self.current_language, {}).get(key, default)
 
+    def _toggle_mode_group(self, expanded):
+        """Mod seçici bölümünü başlığa tıklanınca daralt/aç."""
+        self.single_mode_radio.setVisible(expanded)
+        self.router_mode_radio.setVisible(expanded)
+        self.mode_group.setMaximumHeight(16777215 if expanded else 32)
+
+    def is_router_mode(self):
+        return hasattr(self, 'router_mode_radio') and self.router_mode_radio.isChecked()
+
+    def on_mode_changed(self, single_mode):
+        """Tek model ve router arayüzleri arasında geçiş yap."""
+        self.model_selector.setVisible(True)
+        self.model_selector.set_router_mode(not single_mode)
+        self.advanced_settings.set_single_model_mode(single_mode)
+        self.router_settings.setVisible(not single_mode)
+        if single_mode:
+            self.router_settings.stop_polling()
+        elif self.server_manager.is_running():
+            self.router_settings.start_polling()
+        self.build_command_preview()
+
+    def _on_router_server_started(self):
+        if self.is_router_mode():
+            QTimer.singleShot(750, self.router_settings.start_polling)
+
     def build_command_preview(self):
         if hasattr(self, 'command_preview'):
-            self.command_preview.build_command(self.model_path, self.advanced_settings)
+            self.command_preview.build_command(
+                self.model_path, self.advanced_settings, self.is_router_mode(),
+                getattr(self, 'router_settings', None))
 
     def start_server(self):
         self.server_controls.start_server(self.model_path)
         self.save_config()
-        self.model_selector.get_browse_button().setEnabled(False)
+        if not self.is_router_mode():
+            self.model_selector.get_browse_button().setEnabled(False)
 
     def stop_server(self):
         self.server_controls.stop_server()
@@ -225,8 +301,16 @@ class LlamaTray:
                      (self.stop_server_action, "menu_stop_server"), (self.about_action, "menu_about")]:
             a.setText(tr(k))
         if hasattr(self, 'about_button'): self.about_button.setText(tr("about_button", "ℹ️ Uygulama Hakkında"))
+        if hasattr(self, 'tabs'):
+            self.tabs.setTabText(0, tr("tab_main", "Ana"))
+            self.tabs.setTabText(1, tr("tab_settings", "Ayarlar"))
+            self.tabs.setTabText(2, tr("tab_profiles", "Profiller"))
+            self.mode_group.setTitle(tr("mode_group_title", "Çalışma Modu"))
+            self.single_mode_radio.setText(tr("mode_single", "Tek Model"))
+            self.router_mode_radio.setText(tr("mode_router", "Router Modu"))
         for comp in [self.model_selector, self.server_controls, self.command_preview,
-                     self.advanced_settings, self.monitor_widget, self.profile_manager]:
+                     self.advanced_settings, self.router_settings,
+                     self.monitor_widget, self.profile_manager]:
             if hasattr(comp, 'update_labels'): comp.update_labels()
         if hasattr(self, 'language_combo'):
             self.language_combo.blockSignals(True); self.language_combo.clear()
@@ -234,7 +318,7 @@ class LlamaTray:
             self.language_combo.setCurrentIndex(1 if self.current_language == "en" else 0)
             self.language_combo.blockSignals(False)
         if hasattr(self, 'window'):
-            self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {tr('version', 'v1.3.0')}")
+            self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {VERSION_DISPLAY}")
 
     def show_about_dialog(self):
         AboutDialog(translations_func=self.get_translated, icon_path=get_icon_path(),
@@ -269,9 +353,21 @@ class LlamaTray:
         return {"gpu_layers": self.advanced_settings.gpu_layers_spinbox.value(), "context_size": ctx,
                 "port": self.advanced_settings.port_spinbox.value(),
                 "extra_args": self.advanced_settings.extra_params_lineedit.text().strip(),
-                "mmproj_path": self.advanced_settings.mmproj_lineedit.text().strip()}
+                "mmproj_path": self.advanced_settings.mmproj_lineedit.text().strip(),
+                "mode": "router" if self.is_router_mode() else "single",
+                "models_dir": self.router_settings.models_dir_lineedit.text().strip(),
+                "no_models_autoload": not self.router_settings.no_autoload_checkbox.isChecked(),
+                "jinja": self.router_settings.jinja_checkbox.isChecked()}
 
     def apply_profile_values(self, data):
+        if data.get("mode", "single") == "router":
+            self.router_mode_radio.setChecked(True)
+        else:
+            self.single_mode_radio.setChecked(True)
+        self.router_settings.models_dir_lineedit.setText(str(data.get("models_dir", "")))
+        self.router_settings.no_autoload_checkbox.setChecked(
+            not data.get("no_models_autoload", True))
+        self.router_settings.jinja_checkbox.setChecked(data.get("jinja", True))
         gl = data.get("gpu_layers")
         if gl is not None:
             try: self.advanced_settings.gpu_layers_spinbox.setValue(int(gl))
@@ -311,6 +407,10 @@ class LlamaTray:
                       "port": self.advanced_settings.port_spinbox.value(),
                       "extra_params": self.advanced_settings.extra_params_lineedit.text(),
                       "mmproj_path": self.advanced_settings.mmproj_lineedit.text().strip(),
+                      "mode": "router" if self.is_router_mode() else "single",
+                      "models_dir": self.router_settings.models_dir_lineedit.text().strip(),
+                      "no_models_autoload": not self.router_settings.no_autoload_checkbox.isChecked(),
+                      "jinja": self.router_settings.jinja_checkbox.isChecked(),
                       "language": self.current_language}
             with open(cp, "w", encoding="utf-8") as f: json.dump(config, f, indent=2)
             self.log(self.get_translated("log_config_saved", "✓ Ayarlar başarıyla kaydedildi."))
@@ -324,7 +424,15 @@ class LlamaTray:
             self.log("ℹ Kaydedilmiş yapılandırma bulunamadı. Varsayılan ayarlar kullanılıyor."); return
         try:
             with open(cp, "r", encoding="utf-8") as f: config = json.load(f)
-            self.model_path = config.get("model_path")
+            self.model_path = config.get("model_path") or ""
+            if config.get("mode", "single") == "router":
+                self.router_mode_radio.setChecked(True)
+            else:
+                self.single_mode_radio.setChecked(True)
+            self.router_settings.models_dir_lineedit.setText(str(config.get("models_dir", "")))
+            self.router_settings.no_autoload_checkbox.setChecked(
+                not config.get("no_models_autoload", True))
+            self.router_settings.jinja_checkbox.setChecked(config.get("jinja", True))
             if self.model_path:
                 self.log(self.get_translated("log_model_path_loaded", "✓ Model yolu yüklendi: {path}").format(path=self.model_path))
             gl = config.get("gpu_layers")
@@ -382,16 +490,35 @@ class LlamaTray:
             self.log(f"❌ Hata: Model seçilirken hata - {type(e).__name__}: {e}")
 
     def hf_download(self):
-        """HuggingFace'den model indir"""
-        dialog = HfDownloaderDialog(translations_func=self.get_translated, parent=getattr(self, 'window', None))
+        """HuggingFace'den tek-model veya router klasörüne model indir."""
+        router_mode = self.is_router_mode()
+        initial_folder = (
+            self.router_settings.models_dir_lineedit.text().strip()
+            if router_mode else "")
+        dialog = HfDownloaderDialog(
+            translations_func=self.get_translated,
+            parent=getattr(self, 'window', None),
+            initial_folder=initial_folder)
         if dialog.exec():
             path = dialog.get_downloaded_path()
             if path and os.path.exists(path):
+                sz = os.path.getsize(path) / (1024 * 1024)
+                if router_mode:
+                    self.log(self.get_translated(
+                        "hf_router_model_downloaded",
+                        "✓ Model router klasörüne indirildi: {file_path}").format(file_path=path))
+                    self.log(self.get_translated(
+                        "log_file_size", "  Dosya boyutu: {size:.2f} MB").format(size=sz))
+                    if self.server_manager.is_running():
+                        QTimer.singleShot(500, self.router_settings.refresh_models)
+                    return
+
                 self.model_path = path
                 self.model_selector.set_model_path(path)
-                sz = os.path.getsize(path) / (1024 * 1024)
-                self.log(self.get_translated("log_model_selected", "✓ Model seçildi: {file_path}").format(file_path=path))
-                self.log(self.get_translated("log_file_size", "  Dosya boyutu: {size:.2f} MB").format(size=sz))
+                self.log(self.get_translated(
+                    "log_model_selected", "✓ Model seçildi: {file_path}").format(file_path=path))
+                self.log(self.get_translated(
+                    "log_file_size", "  Dosya boyutu: {size:.2f} MB").format(size=sz))
                 self.build_command_preview()
 
     def cleanup_tray(self):

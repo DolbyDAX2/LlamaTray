@@ -34,8 +34,18 @@ class CommandPreviewWidget(QGroupBox):
         layout.addWidget(self.command_text)
 
         self.setLayout(layout)
+        self.setCheckable(True)
+        self.setChecked(True)
+        self.toggled.connect(self._toggle_contents)
 
-    def build_command(self, model_path, advanced_settings):
+    def _toggle_contents(self, expanded):
+        """Başlığa tıklandığında bölüm içeriğini daralt/aç."""
+        for child in (self.preview_label, self.command_text):
+            child.setVisible(expanded)
+        self.setMaximumHeight(16777215 if expanded else 32)
+
+    def build_command(self, model_path, advanced_settings, router_mode=False,
+                      router_settings=None):
         """Başlatma komutunu oluştur ve göster"""
         if self.server_manager is not None:
             cmd_path = self.server_manager.find_llama_server()
@@ -48,32 +58,37 @@ class CommandPreviewWidget(QGroupBox):
 
         parts = [cmd_path]
 
-        # Model yolu
-        if model_path:
-            parts.extend(["-m", model_path])
-
-        # Gelişmiş ayarlar
         if advanced_settings:
             gpu_layers = advanced_settings.gpu_layers_spinbox.value()
-            parts.extend(["--n-gpu-layers", str(gpu_layers)])
-
-            # Context boyutu
-            try:
-                context_size = int(advanced_settings.context_size_combobox.currentText())
-            except (ValueError, TypeError):
-                context_size = 32768
-            parts.extend(["--ctx-size", str(context_size)])
-
-            # Port
             port = advanced_settings.port_spinbox.value()
-            parts.extend(["--port", str(port)])
 
-            # mmproj dosyası
-            mmproj_path = advanced_settings.mmproj_lineedit.text().strip()
-            if mmproj_path:
-                parts.extend(["--mmproj", mmproj_path])
+            if router_mode and router_settings:
+                models_dir = router_settings.models_dir_lineedit.text().strip()
+                if models_dir:
+                    parts.extend(["--models-dir", models_dir])
+                if not router_settings.no_autoload_checkbox.isChecked():
+                    parts.append("--no-models-autoload")
+                if router_settings.jinja_checkbox.isChecked():
+                    parts.append("--jinja")
+                parts.extend(["--host", "127.0.0.1", "--port", str(port)])
+                try:
+                    context_size = int(advanced_settings.context_size_combobox.currentText())
+                except (ValueError, TypeError):
+                    context_size = 32768
+                parts.extend(["-ngl", str(gpu_layers), "--ctx-size", str(context_size)])
+            else:
+                if model_path:
+                    parts.extend(["-m", model_path])
+                parts.extend(["--n-gpu-layers", str(gpu_layers)])
+                try:
+                    context_size = int(advanced_settings.context_size_combobox.currentText())
+                except (ValueError, TypeError):
+                    context_size = 32768
+                parts.extend(["--ctx-size", str(context_size), "--port", str(port)])
+                mmproj_path = advanced_settings.mmproj_lineedit.text().strip()
+                if mmproj_path:
+                    parts.extend(["--mmproj", mmproj_path])
 
-            # Ek parametreler
             extra_params = advanced_settings.extra_params_lineedit.text().strip()
             if extra_params:
                 parts.append(extra_params)

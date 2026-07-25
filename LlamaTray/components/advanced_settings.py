@@ -5,7 +5,7 @@ GPU katmanları, context boyutu, port ve ek parametreler için ayarları içerir
 
 from PyQt6.QtWidgets import (
     QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox, QComboBox,
-    QLineEdit, QPushButton, QFileDialog
+    QLineEdit, QPushButton, QFileDialog, QWidget
 )
 from PyQt6.QtCore import QVariant
 
@@ -65,7 +65,7 @@ class AdvancedSettingsWidget(QGroupBox):
         gpu_row = QHBoxLayout()
         self.gpu_layers_label = QLabel(self.get_translated("label_gpu_layers", "GPU Katmanları:"))
         self.gpu_layers_spinbox = QSpinBox()
-        self.gpu_layers_spinbox.setRange(0, 200)
+        self.gpu_layers_spinbox.setRange(0, 999)
         self.gpu_layers_spinbox.setValue(99)
         self.gpu_layers_spinbox.setSuffix("")  # Suffix kaldırıldı, sadece label'da "GPU Katmanları:" görünüyor
         gpu_row.addWidget(self.gpu_layers_label)
@@ -131,6 +131,9 @@ class AdvancedSettingsWidget(QGroupBox):
         mmproj_row.addWidget(self.mmproj_label)
         mmproj_row.addWidget(self.mmproj_lineedit)
         mmproj_row.addWidget(self.mmproj_browse_button)
+        self._mmproj_widgets = (
+            self.mmproj_label, self.mmproj_lineedit, self.mmproj_browse_button)
+        self._single_model_mode = True
         
         # Layout'a ekle
         layout.addLayout(gpu_row)
@@ -141,7 +144,22 @@ class AdvancedSettingsWidget(QGroupBox):
         layout.addLayout(mmproj_row)
         
         self.setLayout(layout)
-    
+        self.setCheckable(True)
+        self.setChecked(True)
+        self.toggled.connect(self._toggle_contents)
+
+    def _toggle_contents(self, expanded):
+        """Başlığa tıklandığında bölüm içeriğini daralt/aç."""
+        for child in self.findChildren(QWidget):
+            child.setVisible(expanded and (self._single_model_mode or child not in self._mmproj_widgets))
+        self.setMaximumHeight(16777215 if expanded else 32)
+
+    def set_single_model_mode(self, enabled):
+        """Router modunda mmproj alanlarını gizle."""
+        self._single_model_mode = enabled
+        for widget in self._mmproj_widgets:
+            widget.setVisible(enabled and self.isChecked())
+
     def get_translated(self, key, default=""):
         """Verilen anahtar için çeviriyi döndür"""
         if self.translations_func:

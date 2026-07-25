@@ -10,19 +10,29 @@ LlamaTray is a lightweight and stable PyQt6-based **Llama.cpp (llama-server)** m
 
 ### ✨ Features
 
+- **Tabbed Interface:** Main, Settings, and Profiles tabs keep server controls, configuration, and profile management organized.
+- **Single Model & Router Modes:** Run one GGUF directly or launch llama-server as a model router over an entire models directory.
+- **Router Model Management:** View model states through `GET /models` and load or unload models from the application.
+- **Fast HuggingFace Downloader:** Search GGUF repositories, retrieve file names and exact sizes through the HuggingFace Tree API, and download models without leaving LlamaTray.
 - **Effortless Server Management:** Spin up or shut down your local AI models (`llama-server`) with a single click from the GUI.
-- **Zombie Process Prevention:** When closed via the top-right (X) button or the tray icon, the background `llama-server` process is automatically terminated, cleanly freeing up VRAM and CPU. Crash-safe cleanup mechanism included.
 - **Real-Time Resource Monitoring:** Track CPU, RAM, GPU, and VRAM utilization instantly via clean visual progress bars (1-second refresh interval).
-- **Profile Management:** Save, load, and delete named profiles for different model configurations. Quickly switch between setups.
+- **Persistent Profiles & Settings:** Save, load, update, and delete named model configurations. Profiles and application preferences are restored automatically between sessions.
 - **Advanced Configuration:** Customize GPU layers, context size, port, and extra parameters through an intuitive settings panel.
 - **Web UI Integration:** One-click button to open the llama.cpp web interface in your default browser after server starts.
-- **Persistent Settings & Profiles:** All preferences and profiles are automatically saved to `~/.llamatray/config.json` and `~/.llamatray/profiles.json`, restored on next launch.
 - **Native Linux Integration:** Native Wayland and KDE Plasma support ensuring a minimal footprint on your desktop ecosystem.
-- **GPU Agnostic:** Supports NVIDIA (via pynvml/nvidia-smi), AMD (via rocm-smi/sysfs), and integrated GPUs.
+- **NVIDIA & AMD Monitoring:** GPU and VRAM metrics are collected through NVIDIA (NVML/nvidia-smi) and AMD (rocm-smi/sysfs) monitoring interfaces when available.
 - **AUR Package:** Available on the Arch User Repository (AUR) for easy installation.
-- **Crash Handler:** Custom exception hook that cleans up the tray icon and server process even if the application crashes.
-- **mmproj Support:** Load multi-model projects via `--mmproj` flag for complex model configurations.
+- **mmproj Support:** Attach a multimodal projector to compatible vision-language models through `--mmproj`.
 - **Command Preview:** Real-time launch command preview showing the exact `llama-server` command before starting.
+
+### 🆕 What's New in v1.4.0
+
+- Three-tab Main / Settings / Profiles interface with collapsible settings sections.
+- Router mode with models directory, auto-load, Jinja, model state, and load/unload controls.
+- Context size and GPU layer settings for both Single Model and Router modes.
+- HuggingFace Downloader integration with Router mode: the models directory is preselected and the model list refreshes after downloading.
+- Much faster HuggingFace file listing while preserving exact GGUF file sizes.
+- Turkish and English localization for all new controls and model states.
 
 ### 📦 Installation
 
@@ -104,7 +114,7 @@ LlamaTray/
 └── LlamaTray/                 # Main Python Package Directory
     ├── __init__.py            # Package initializer
     ├── __main__.py            # Entry point for `python -m LlamaTray`
-    ├── main.py                # Application entry point with crash handler
+    ├── main.py                # Application entry point
     ├── ui.py                  # PyQt6 UI, system tray integration
     ├── server.py              # Llama-server process manager (QProcess)
     ├── monitor.py             # Hardware metric polling module (CPU/RAM/GPU/VRAM)
@@ -116,22 +126,36 @@ LlamaTray/
         ├── __init__.py        # Components package initializer
         ├── about_dialog.py    # About/credits dialog with language support
         ├── advanced_settings.py  # Advanced settings panel
+        ├── command_preview.py # Live llama-server command preview
+        ├── hf_downloader.py   # HuggingFace search and downloader dialog
+        ├── model_selector.py  # Single-model selection controls
         ├── monitor_widget.py  # Real-time resource monitor widget
-        └── profile_manager.py # Profile save/load/delete manager
+        ├── profile_manager.py # Profile save/load/delete manager
+        ├── router_settings.py # Router options and model API controls
+        └── server_controls.py # Start, stop, and Web UI controls
 ```
 
 ### 🖱️ Usage
 
-1. Launch LlamaTray from your application menu or terminal (`LlamaTray`).
-2. Click **"Browse"** to select a `.gguf` model file.
-3. (Optional) Adjust advanced settings: GPU layers, context size, port, extra parameters.
-4. **Profile Management:** Save your current configuration as a named profile for quick switching between different model setups.
-5. Click **"Start Server"** to launch `llama-server`.
-6. Monitor CPU, RAM, GPU, VRAM usage in real-time.
-7. Click **"Stop Server"** or close the window to terminate — no zombie processes left behind.
-8. Click **"Open Web UI"** to open the llama.cpp web UI in your browser.
+#### Single Model Mode
 
-> **Note:** Closing the window automatically terminates the llama-server process. The application also cleans up on crash via the built-in crash handler.
+1. Launch LlamaTray and keep **Single Model** selected under the Settings tab.
+2. On the Main tab, select a local `.gguf` file or use **Download from HF**.
+3. Configure GPU layers, context size, port, sampler preset, optional mmproj, and extra parameters.
+4. Review the generated command and click **Start Server**.
+
+#### Router Mode
+
+1. Select **Router Mode** under the Settings tab.
+2. Choose the directory containing your GGUF files.
+3. Configure **Auto-load models**, **Jinja**, GPU layers, context size, port, and optional extra parameters.
+4. Start the server. The active model list is refreshed automatically.
+5. Use **Load** and **Unload** beside each model. Model states show Loaded, Unloaded, Loading, or Unknown.
+6. **Download from HF** remains available and defaults to the configured models directory.
+
+In either mode, use **Open Web UI** to open llama.cpp in your browser. Click **Stop Server** or close LlamaTray to terminate the server cleanly.
+
+> **Note:** Router mode requires a llama-server build that supports `--models-dir` and the model router API. Closing the window automatically terminates the server.
 
 ### ⚙️ Advanced Settings & Profiles
 
@@ -140,17 +164,26 @@ LlamaTray/
 | GPU Layers | Number of layers to offload to GPU | 99 |
 | Context Size | Context window size (512–1,000,000) | 32768 |
 | Port | Server port (1024–65535) | 8080 |
+| Sampler Preset | Ready-to-use neutral, balanced, creative, and precise sampling settings | Custom |
 | Extra Parameters | Additional llama-server flags | (optional) |
-| mmproj File | Multi-model project file (.mmproj) | (optional) |
+| mmproj File | Multimodal projector file used in Single Model mode | (optional) |
 
-**Profiles** allow you to save named configurations and instantly restore them via the dropdown. Profiles are stored in `~/.llamatray/profiles.json`.
+Router mode additionally provides:
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Models Directory | Directory containing the GGUF models exposed by the router | (required) |
+| Auto-load Models | Automatically load router models when required | Disabled |
+| Jinja | Enable Jinja chat templates | Enabled |
+
+**Profiles** support both Single Model and Router configurations. Named profiles are stored in `~/.llamatray/profiles.json`; application settings are stored in `~/.llamatray/config.json`.
 
 ### 🧩 Dependencies
 
 - **PyQt6** — GUI framework
 - **psutil** — CPU/RAM monitoring
 - **nvidia-ml-py** — NVIDIA GPU monitoring (optional, falls back to pynvml or nvidia-smi)
-- **requests** — HTTP API shutdown support (optional)
+- **requests** — HuggingFace and llama-server Router API communication
 - **llama-server** — Part of [llama.cpp](https://github.com/ggerganov/llama.cpp)
 
 ### 🔗 Links
@@ -171,19 +204,29 @@ LlamaTray, Linux (özellikle Arch Linux / CachyOS) için geliştirilmiş, PyQt6 
 
 ### ✨ Özellikler
 
+- **Sekmeli Arayüz:** Ana, Ayarlar ve Profiller sekmeleri sunucu kontrollerini, yapılandırmayı ve profil yönetimini düzenli tutar.
+- **Tek Model ve Router Modları:** Tek bir GGUF dosyasını doğrudan çalıştırın veya bir model klasörünü llama-server router olarak sunun.
+- **Router Model Yönetimi:** `GET /models` üzerinden model durumlarını görüntüleyin ve modelleri uygulama içinden yükleyip boşaltın.
+- **Hızlı HuggingFace İndirici:** GGUF depolarını arayın, dosya adlarıyla gerçek boyutlarını HuggingFace Tree API üzerinden hızla alın ve modelleri LlamaTray'den ayrılmadan indirin.
 - **Kolay Sunucu Yönetimi:** Yerel AI modellerinizi (`llama-server`) tek tıkla başlatın veya durdurun.
-- **Zombi Süreç Koruması:** Pencere kapatıldığında (X butonu) veya tepsi ikonundan çıkıldığında, arka plandaki `llama-server` süreci otomatik olarak sonlandırılır, VRAM ve CPU temizlenir. Crash durumunda da temizlik yapan mekanizma.
 - **Gerçek Zamanlı Kaynak İzleme:** CPU, RAM, GPU ve VRAM kullanımını görsel ilerleme çubuklarıyla anlık olarak takip edin (1 saniye aralıklı güncelleme).
-- **Profil Yönetimi:** Farklı model yapılandırmaları için isimli profiller kaydedin, yükleyin ve silin. Ayarlar arasında hızlıca geçiş yapın.
+- **Kalıcı Profiller ve Ayarlar:** İsimli model yapılandırmalarını kaydedin, yükleyin, güncelleyin ve silin. Profiller ile uygulama tercihleri oturumlar arasında otomatik olarak geri yüklenir.
 - **Gelişmiş Yapılandırma:** GPU katmanları, context boyutu, port ve ek parametreleri sezgisel bir ayar panelinden özelleştirin.
 - **Web UI Entegrasyonu:** Sunucu başladıktan sonra tek tıkla llama.cpp web arayüzünü varsayılan tarayıcınızda açın.
-- **Kalıcı Ayarlar ve Profiller:** Tüm tercihler otomatik olarak `~/.llamatray/config.json` ve `~/.llamatray/profiles.json` dosyalarına kaydedilir ve bir sonraki açılışta geri yüklenir.
 - **Yerel Linux Entegrasyonu:** Wayland ve KDE Plasma desteği ile masaüstü ortamınıza minimum ayak izi bırakır.
-- **GPU Bağımsız:** NVIDIA (pynvml/nvidia-smi), AMD (rocm-smi/sysfs) ve tümleşik GPU'ları destekler.
+- **NVIDIA ve AMD İzleme:** GPU ve VRAM metrikleri, mevcut olduğunda NVIDIA (NVML/nvidia-smi) ve AMD (rocm-smi/sysfs) izleme arayüzlerinden alınır.
 - **AUR Paketi:** Arch User Repository (AUR) üzerinden kolay kurulum imkanı.
-- **Crash Handler:** Uygulama çökse bile tepsi ikonunu ve sunucu sürecini temizleyen özel hata yakalama mekanizması.
-- **mmproj Desteği:** `--mmproj` flag'i ile çoklu model projelerini yükleyin.
+- **mmproj Desteği:** Uyumlu görsel-dil modellerine `--mmproj` ile çok modlu projektör bağlayın.
 - **Komut Önizlemesi:** Sunucu başlatılmadan önce tam `llama-server` komutunu gösteren gerçek zamanlı önizleme.
+
+### 🆕 v1.4.0 Yenilikleri
+
+- Daraltılabilir ayar bölümlerine sahip üç sekmeli Ana / Ayarlar / Profiller arayüzü.
+- Model klasörü, otomatik yükleme, Jinja, model durumu ve yükle/boşalt kontrollerine sahip Router modu.
+- Tek Model ve Router modlarında Context Boyutu ve GPU Katmanları desteği.
+- HF Downloader ile Router entegrasyonu: model klasörü otomatik seçilir ve indirme sonrasında model listesi yenilenir.
+- GGUF dosyalarının gerçek boyutlarını koruyan çok daha hızlı HuggingFace dosya listeleme.
+- Tüm yeni kontroller ve model durumları için Türkçe/İngilizce yerelleştirme.
 
 ### 📦 Kurulum
 
@@ -265,7 +308,7 @@ LlamaTray/
 └── LlamaTray/                 # Ana Python Paket Dizini
     ├── __init__.py            # Paket başlatıcı
     ├── __main__.py            # `python -m LlamaTray` giriş noktası
-    ├── main.py                # Crash handler ile uygulama giriş noktası
+    ├── main.py                # Uygulama giriş noktası
     ├── ui.py                  # PyQt6 arayüzü, sistem tepsisi entegrasyonu
     ├── server.py              # Llama-server süreç yöneticisi (QProcess)
     ├── monitor.py             # Donanım metrik toplama modülü (CPU/RAM/GPU/VRAM)
@@ -277,22 +320,36 @@ LlamaTray/
         ├── __init__.py        # Bileşenler paket başlatıcı
         ├── about_dialog.py    # Hakkında/kredi diyalog penceresi (dil desteği ile)
         ├── advanced_settings.py  # Gelişmiş ayarlar paneli
+        ├── command_preview.py # Canlı llama-server komut önizlemesi
+        ├── hf_downloader.py   # HuggingFace arama ve indirme penceresi
+        ├── model_selector.py  # Tek model seçim kontrolleri
         ├── monitor_widget.py  # Gerçek zamanlı kaynak izleme bileşeni
-        └── profile_manager.py # Profil kaydet/yükle/sil yöneticisi
+        ├── profile_manager.py # Profil kaydet/yükle/sil yöneticisi
+        ├── router_settings.py # Router ayarları ve model API kontrolleri
+        └── server_controls.py # Başlatma, durdurma ve Web UI kontrolleri
 ```
 
 ### 🖱️ Kullanım
 
-1. LlamaTray'i uygulama menünüzden veya terminalden başlatın (`LlamaTray`).
-2. **"Model Seç"** butonuna tıklayarak bir `.gguf` model dosyası seçin.
-3. (İsteğe bağlı) Gelişmiş ayarları yapılandırın: GPU katmanları, context boyutu, port, ek parametreler.
-4. **Profil Yönetimi:** Mevcut yapılandırmanızı isimli bir profil olarak kaydedin, farklı model kurulumları arasında hızlı geçiş yapın.
-5. **"Sunucuyu Başlat"** butonuna tıklayarak `llama-server`'ı başlatın.
-6. CPU, RAM, GPU, VRAM kullanımını gerçek zamanlı olarak izleyin.
-7. **"Sunucuyu Durdur"** butonuna tıklayarak veya pencereyi kapatarak sunucuyu sonlandırın — arka planda zombi süreç kalmaz.
-8. **"Web Arayüzünü Aç"** butonu ile llama.cpp web arayüzünü tarayıcınızda açın.
+#### Tek Model Modu
 
-> **Not:** Pencere kapatıldığında llama-server süreci otomatik olarak sonlandırılır. Crash handler sayesinde uygulama çökse bile temizlik yapılır.
+1. LlamaTray'i başlatın ve Ayarlar sekmesinde **Tek Model** seçeneğini açık bırakın.
+2. Ana sekmede yerel bir `.gguf` dosyası seçin veya **HF'den İndir** seçeneğini kullanın.
+3. GPU katmanları, context boyutu, port, sampler preset, isteğe bağlı mmproj ve ek parametreleri yapılandırın.
+4. Oluşturulan komutu kontrol edip **Sunucuyu Başlat** butonuna tıklayın.
+
+#### Router Modu
+
+1. Ayarlar sekmesinden **Router Modu** seçeneğini seçin.
+2. GGUF dosyalarınızın bulunduğu model klasörünü belirleyin.
+3. **Modelleri otomatik yükle**, **Jinja**, GPU katmanları, context boyutu, port ve isteğe bağlı ek parametreleri yapılandırın.
+4. Sunucuyu başlatın. Aktif model listesi otomatik olarak yenilenir.
+5. Her modelin yanındaki **Yükle** ve **Boşalt** butonlarını kullanın. Durum sütununda Yüklü, Boşta, Yükleniyor veya Bilinmiyor gösterilir.
+6. **HF'den İndir** kullanılabilir kalır ve indirme klasörü olarak yapılandırılmış model klasörünü otomatik seçer.
+
+Her iki modda da **Web Arayüzünü Aç** ile llama.cpp arayüzünü tarayıcıda açabilirsiniz. **Sunucuyu Durdur** butonu veya pencereyi kapatmak sunucuyu temiz şekilde sonlandırır.
+
+> **Not:** Router modu, `--models-dir` ve model router API desteğine sahip bir llama-server derlemesi gerektirir. Pencere kapatıldığında sunucu otomatik olarak sonlandırılır.
 
 ### ⚙️ Gelişmiş Ayarlar ve Profiller
 
@@ -301,17 +358,26 @@ LlamaTray/
 | GPU Katmanları | GPU'ya yüklenecek katman sayısı | 99 |
 | Context Boyutu | Context penceresi boyutu (512–1.000.000) | 32768 |
 | Port | Sunucu portu (1024–65535) | 8080 |
+| Sampler Preset | Nötr, dengeli, yaratıcı ve kesin hazır örnekleme ayarları | Özel |
 | Ek Parametreler | Ek llama-server flag'leri | (isteğe bağlı) |
-| mmproj Dosyası | Çoklu model proje dosyası (.mmproj) | (isteğe bağlı) |
+| mmproj Dosyası | Tek Model modunda kullanılan çok modlu projektör dosyası | (isteğe bağlı) |
 
-**Profiller** sayesinde farklı yapılandırmaları isimlendirip kaydedebilir, açılır menüden anında yükleyebilirsiniz. Profiller `~/.llamatray/profiles.json` dosyasında saklanır.
+Router modu ayrıca şu ayarları sunar:
+
+| Ayar | Açıklama | Varsayılan |
+|------|----------|------------|
+| Model Klasörü | Router tarafından sunulacak GGUF modellerinin bulunduğu klasör | (zorunlu) |
+| Modelleri Otomatik Yükle | Gerektiğinde router modellerini otomatik yükler | Kapalı |
+| Jinja | Jinja sohbet şablonlarını etkinleştirir | Açık |
+
+**Profiller** hem Tek Model hem de Router yapılandırmalarını destekler. İsimli profiller `~/.llamatray/profiles.json`, uygulama ayarları ise `~/.llamatray/config.json` dosyasında saklanır.
 
 ### 🧩 Bağımlılıklar
 
 - **PyQt6** — GUI framework
 - **psutil** — CPU/RAM izleme
 - **nvidia-ml-py** — NVIDIA GPU izleme (isteğe bağlı, pynvml veya nvidia-smi'ye düşer)
-- **requests** — HTTP API ile kapatma desteği (isteğe bağlı)
+- **requests** — HuggingFace ve llama-server Router API iletişimi
 - **llama-server** — [llama.cpp](https://github.com/ggerganov/llama.cpp) parçası
 
 ### 🔗 Bağlantılar

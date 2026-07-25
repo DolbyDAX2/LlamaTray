@@ -200,7 +200,9 @@ class LlamaServerManager(QProcess):
         _llama_server_cached_path = "llama-server"
         return "llama-server"
 
-    def start_server(self, model_path, gpu_layers=99, context_size=8192, port=8080, extra_params="", mmproj_path=""):
+    def start_server(self, model_path="", gpu_layers=99, context_size=8192, port=8080,
+                     extra_params="", mmproj_path="", router_mode=False,
+                     models_dir="", no_models_autoload=True, jinja=True):
         """
         Llama-server'ı başlat
 
@@ -211,28 +213,39 @@ class LlamaServerManager(QProcess):
             port: Sunucu portu
             extra_params: Ek parametreler
             mmproj_path: mmproj proje dosyasının yolu (opsiyonel)
+            router_mode: Model router modunu etkinleştirir
+            models_dir: Router modunda GGUF modellerinin bulunduğu klasör
+            no_models_autoload: Başlangıçta modellerin otomatik yüklenmesini engeller
+            jinja: Jinja sohbet şablonlarını etkinleştirir
         """
         # Ön kontroller
         if self.server_running:
             self.log("⚠ Server is already running.")
             return False
 
-        if not model_path:
-            self.log("❌ Error: Please select a model file first.")
-            return False
+        if router_mode:
+            if not models_dir:
+                self.log("❌ Error: Please select a models directory first.")
+                return False
+            if not os.path.isdir(models_dir):
+                self.log(f"❌ Error: Models directory not found: {models_dir}")
+                return False
+        else:
+            if not model_path:
+                self.log("❌ Error: Please select a model file first.")
+                return False
+            if not os.path.exists(model_path):
+                self.log(f"❌ Error: Model file not found: {model_path}")
+                return False
 
-        if not os.path.exists(model_path):
-            self.log(f"❌ Error: Model file not found: {model_path}")
-            return False
-
-        # Model boyutu kontrol et
-        try:
-            model_size_mb = os.path.getsize(model_path) / (1024 * 1024)
-            self.log(f"📦 Model size: {model_size_mb:.2f} MB")
-            if model_size_mb < 100:
-                self.log(f"⚠ Warning: Model file seems very small ({model_size_mb:.2f} MB). Is it a valid GGUF file?")
-        except Exception as e:
-            self.log(f"⚠ Could not check model size: {e}")
+            # Model boyutu kontrol et
+            try:
+                model_size_mb = os.path.getsize(model_path) / (1024 * 1024)
+                self.log(f"📦 Model size: {model_size_mb:.2f} MB")
+                if model_size_mb < 100:
+                    self.log(f"⚠ Warning: Model file seems very small ({model_size_mb:.2f} MB). Is it a valid GGUF file?")
+            except Exception as e:
+                self.log(f"⚠ Could not check model size: {e}")
 
         # Context size validation
         try:
@@ -257,6 +270,8 @@ class LlamaServerManager(QProcess):
             'model_path': model_path, 'gpu_layers': gpu_layers,
             'context_size': context_size, 'port': port,
             'extra_params': extra_params, 'mmproj_path': mmproj_path,
+            'router_mode': router_mode, 'models_dir': models_dir,
+            'no_models_autoload': no_models_autoload, 'jinja': jinja,
         }
 
         # Non-blocking cleanup: QEventLoop ile UI responsive kalır
@@ -315,13 +330,23 @@ class LlamaServerManager(QProcess):
         extra_params = p['extra_params']
         mmproj_path = p['mmproj_path']
 
-        args = ["-m", model_path]
-        args.extend(["--n-gpu-layers", str(gpu_layers)])
-        args.extend(["--ctx-size", str(context_size)])
-        args.extend(["--port", str(port)])
+        router_mode = p['router_mode']
+        if router_mode:
+            args = ["--models-dir", p['models_dir']]
+            if p['no_models_autoload']:
+                args.append("--no-models-autoload")
+            if p['jinja']:
+                args.append("--jinja")
+            args.extend(["--host", self.host, "--port", str(port)])
+            args.extend(["-ngl", str(gpu_layers), "--ctx-size", str(context_size)])
+        else:
+            args = ["-m", model_path]
+            args.extend(["--n-gpu-layers", str(gpu_layers)])
+            args.extend(["--ctx-size", str(context_size)])
+            args.extend(["--port", str(port)])
 
-        # mmproj dosyası varsa ekle
-        if mmproj_path:
+        # mmproj yalnızca tek model modunda eklenir
+        if not router_mode and mmproj_path:
             mmproj_path = mmproj_path.strip()
             if mmproj_path:
                 if os.path.exists(mmproj_path):
