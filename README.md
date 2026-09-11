@@ -78,7 +78,7 @@ chmod +x install.sh
 llamatray
 ```
 
-The installer automatically detects your distribution and installs required system packages (`python3-venv`, `python3-pip`). It creates a virtual environment, installs Python dependencies, generates a launcher script at `~/.local/bin/llamatray`, and registers a `.desktop` file for your application menu. On Apt-based systems it also installs missing Qt6/XCB runtime libraries (for minimal X11 desktops such as XFCE/MATE), registers the application icon into `~/.local/share/icons/hicolor`, and adds `~/.local/bin` to your shell's PATH using shell-native syntax (bash/zsh/fish aware).
+The installer automatically detects your distribution, selects the highest installed Python 3 interpreter (`python3`, `python3.12`, `python3.14`, etc.), and installs the matching virtual-environment package (`pythonX.Y-venv`, with `python3-venv` fallback) plus pip. It creates a virtual environment, installs Python dependencies, generates a launcher script at `~/.local/bin/llamatray`, and registers a `.desktop` file for your application menu. On Apt-based systems it also installs missing Qt6/XCB runtime libraries (for minimal X11 desktops such as XFCE/MATE), registers the application icon into `~/.local/share/icons/hicolor`, and adds `~/.local/bin` to your shell's PATH using shell-native syntax (bash/zsh/fish aware).
 
 #### Fedora
 
@@ -325,7 +325,7 @@ chmod +x install.sh
 llamatray
 ```
 
-Kurulum betiği dağıtımınızı otomatik olarak tespit eder ve gerekli sistem paketlerini (`python3-venv`, `python3-pip`) yükler. Sanal ortam oluşturur, Python bağımlılıklarını kurar, `~/.local/bin/llamatray` başlatma betiğini oluşturur ve uygulama menünüz için `.desktop` dosyası kaydeder. Apt tabanlı sistemlerde ayrıca eksik Qt6/XCB çalışma zamanı kütüphanelerini (XFCE/MATE gibi minimal X11 masaüstleri için) kurar, uygulama simgesini `~/.local/share/icons/hicolor` altına kaydeder ve `~/.local/bin` yolunu kabuğunuza özgü sözdizimiyle PATH'e ekler (bash/zsh/fish destekli).
+Kurulum betiği dağıtımınızı otomatik olarak tespit eder, kurulu en yüksek Python 3 yorumlayıcısını (`python3`, `python3.12`, `python3.14` vb.) seçer ve uygun sanal ortam paketini (`pythonX.Y-venv`, yoksa `python3-venv`) ve pip'i yükler. Sanal ortam oluşturur, Python bağımlılıklarını kurar, `~/.local/bin/llamatray` başlatma betiğini oluşturur ve uygulama menünüz için `.desktop` dosyası kaydeder. Apt tabanlı sistemlerde ayrıca eksik Qt6/XCB çalışma zamanı kütüphanelerini (XFCE/MATE gibi minimal X11 masaüstleri için) kurar, uygulama simgesini `~/.local/share/icons/hicolor` altına kaydeder ve `~/.local/bin` yolunu kabuğunuza özgü sözdizimiyle PATH'e ekler (bash/zsh/fish destekli).
 
 #### Fedora
 
