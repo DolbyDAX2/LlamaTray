@@ -230,11 +230,13 @@ check_python() {
 # Create virtual environment
 create_venv() {
     # A directory without bin/python is an interrupted/failed venv creation.
-    if [ -d "$VENV_DIR" ] && [ ! -x "$VENV_DIR/bin/python" ]; then
+    if [ -d "$VENV_DIR" ] && {
+        [ ! -x "$VENV_DIR/bin/python" ] || [ ! -x "$VENV_DIR/bin/pip" ];
+    }; then
         warn "Incomplete virtual environment found; recreating $VENV_DIR"
         rm -rf "$VENV_DIR"
     fi
-    if [ -x "$VENV_DIR/bin/python" ]; then
+    if [ -x "$VENV_DIR/bin/python" ] && [ -x "$VENV_DIR/bin/pip" ]; then
         info "Virtual environment already exists at $VENV_DIR"
     else
         info "Creating virtual environment at $VENV_DIR with Python $PYTHON_VERSION"
