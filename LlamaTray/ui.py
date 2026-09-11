@@ -9,10 +9,42 @@ from PyQt6.QtWidgets import (
     QApplication, QSystemTrayIcon, QFileDialog, QMessageBox, QMainWindow,
     QTextEdit, QVBoxLayout, QHBoxLayout, QComboBox, QWidget, QDialog,
     QMenu, QPushButton, QInputDialog, QDialogButtonBox, QTabWidget,
-    QGroupBox, QRadioButton, QLineEdit, QScrollArea, QCheckBox
+    QGroupBox, QRadioButton, QLineEdit, QScrollArea, QCheckBox,
+    QSizePolicy, QStyle
 )
-from PyQt6.QtGui import QIcon, QAction
+from PyQt6.QtGui import QIcon, QAction, QFontMetrics
 from PyQt6.QtCore import QTimer, Qt
+
+
+class ElidedPushButton(QPushButton):
+    """Dar alanlarda metni buton sınırları içinde elide eden buton."""
+
+    def __init__(self, text="", parent=None):
+        super().__init__(parent)
+        self._full_text = ""
+        self.setText(text)
+
+    def setText(self, text):
+        self._full_text = str(text or "")
+        super().setText(self._display_text())
+        if self._full_text:
+            self.setToolTip(self._full_text)
+
+    def _display_text(self):
+        if not self._full_text or self.width() <= 0:
+            return self._full_text
+        margin = self.style().pixelMetric(
+            QStyle.PixelMetric.PM_ButtonMargin, None, self)
+        available = max(8, self.contentsRect().width() - (margin * 2) - 8)
+        return QFontMetrics(self.font()).elidedText(
+            self._full_text, Qt.TextElideMode.ElideRight, available)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        displayed = self._display_text()
+        if displayed != self.text():
+            super().setText(displayed)
+
 
 import LlamaTray.ui_utils as ui_utils
 from .ui_utils import (load_translations, get_icon_path,
@@ -350,21 +382,55 @@ class LlamaTray:
         self.language_combo.setFixedHeight(28)
         self.language_combo.currentTextChanged.connect(self.on_language_changed)
         bottom = QHBoxLayout()
-        bottom.addWidget(self.language_combo)
+        bottom.setContentsMargins(4, 4, 4, 4)
+        bottom.setSpacing(8)
+
+        self.language_combo.setMinimumWidth(96)
+        self.language_combo.setMaximumWidth(112)
+        self.language_combo.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.language_combo.setStyleSheet(
+            "QComboBox { padding: 2px 6px; }"
+            "QComboBox QAbstractItemView { padding: 2px; }")
+        bottom.addWidget(self.language_combo, 0)
+
         # "Minimize to Tray on Close" ayarı: kapatma butonu pencereyi gizler,
         # uygulama tepside yaşamaya devam eder (sadece tray mevcutken anlamlı).
-        self.minimize_to_tray_checkbox = QCheckBox(tr("minimize_to_tray_on_close", "Kapatırken Tepside Minimize Et"))
-        bottom.addWidget(self.minimize_to_tray_checkbox)
-        # llama.cpp build & install manager (v1.5.0)
-        self.llamacpp_manager_button = QPushButton(tr("button_llamacpp_manager", "🛠 llama.cpp Yöneticisi"))
+        self.minimize_to_tray_checkbox = QCheckBox(
+            tr("minimize_to_tray_on_close", "Kapatırken Tepside Minimize Et"))
+        self.minimize_to_tray_checkbox.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.minimize_to_tray_checkbox.setToolTip(
+            self.minimize_to_tray_checkbox.text())
+        bottom.addWidget(self.minimize_to_tray_checkbox, 1)
+
+        # Butonlar dar pencerede üst üste binmez; metin sığmazsa ElidedPushButton
+        # kontrollü olarak ... gösterir. Geniş pencerede stretch ile dengeli büyür.
+        self.llamacpp_manager_button = ElidedPushButton(
+            tr("button_llamacpp_manager", "🛠 llama.cpp Yöneticisi"))
         self.llamacpp_manager_button.clicked.connect(self.open_llamacpp_manager)
+        self.llamacpp_manager_button.setMinimumWidth(132)
         self.llamacpp_manager_button.setFixedHeight(28)
-        bottom.addWidget(self.llamacpp_manager_button)
-        self.about_button = QPushButton(tr("about_button", "ℹ️ Uygulama Hakkında"))
+        self.llamacpp_manager_button.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.llamacpp_manager_button.setStyleSheet(
+            "QPushButton { padding-left: 6px; padding-right: 6px; }")
+        bottom.addWidget(self.llamacpp_manager_button, 1)
+
+        self.about_button = ElidedPushButton(
+            tr("about_button", "ℹ️ Uygulama Hakkında"))
         self.about_button.clicked.connect(self.show_about_dialog)
+        self.about_button.setMinimumWidth(124)
         self.about_button.setFixedHeight(28)
-        bottom.addWidget(self.about_button)
-        bottom.addStretch()
+        self.about_button.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.about_button.setStyleSheet(
+            "QPushButton { padding-left: 6px; padding-right: 6px; }")
+        bottom.addWidget(self.about_button, 1)
+
+        # Sağ tarafta gereksiz boşluk oluşmaması ve dar genişlikte layout'un
+        # widget'ları birbirinin üzerine itmemesi için stretch oranlıdır.
+        bottom.addStretch(0)
 
         # Sekmeli ana layout
         # Düşük çözünürlüklerde (örn. 1024x768) içerik taşmasını/üst üste binmeyi
