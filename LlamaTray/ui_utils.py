@@ -15,6 +15,8 @@ TRANSLATIONS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tr
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 ICON_PATH = os.path.join(CURRENT_DIR, "assets", "llamatray.png")
 ICON_PATH_ON = os.path.join(CURRENT_DIR, "assets", "llamatray (on).png")
+ICON_PATH_ICO = os.path.join(CURRENT_DIR, "assets", "llamatray.ico")
+ICON_PATH_ON_ICO = os.path.join(CURRENT_DIR, "assets", "llamatray (on).ico")
 
 if not os.path.exists(ICON_PATH):
     print(f"!!! WARNING: Icon not found, searched at: {ICON_PATH}")
@@ -92,3 +94,10 @@ def get_icon_path():
 def get_on_icon_path():
     """Sunucu açık durumundaki yeşil ikon yolunu döndür"""
     return ICON_PATH_ON
+
+
+def get_tray_icon_path(server_running=False):
+    """Tepsi için çoklu çözünürlüklü ikon yolunu döndür."""
+    ico_path = ICON_PATH_ON_ICO if server_running else ICON_PATH_ICO
+    png_path = ICON_PATH_ON if server_running else ICON_PATH
+    return ico_path if os.path.exists(ico_path) else png_path
