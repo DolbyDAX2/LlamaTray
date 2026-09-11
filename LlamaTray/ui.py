@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QGroupBox, QRadioButton, QLineEdit, QScrollArea, QCheckBox
 )
 from PyQt6.QtGui import QIcon, QAction
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, Qt
 
 import LlamaTray.ui_utils as ui_utils
 from .ui_utils import load_translations, get_icon_path
@@ -94,6 +94,13 @@ class LlamaTray:
             if os.path.exists(ip): self.tray_icon.setIcon(QIcon(ip))
             self.menu = QMenu()
             tr = self.get_translated
+            # MATE/XFCE/X11'de sol tık olayı yutulabildiği için tepsi menüsünün
+            # EN ÜSTÜNDE her zaman bir "Göster / Gizle" (Show/Hide) eylemi bulunsun.
+            self.show_hide_action = QAction(tr("menu_show_hide", "Göster / Gizle"))
+            self.show_hide_action.triggered.connect(self.toggle_window_visible)
+            self.menu.addAction(self.show_hide_action)
+            self.menu.addSeparator()
+
             self.browse_action = QAction(tr("menu_browse", "Göz At"))
             self.browse_action.triggered.connect(self.browse_file)
             self.menu.addAction(self.browse_action)
@@ -122,18 +129,40 @@ class LlamaTray:
                   f"Continuing in window mode.")
             self.tray_available = False
 
+    def restore_window(self):
+        """Pencereyi tepside geri yükle (MATE/XFCE/X11 fix).
+
+        minimize durum bayrağını temizleyip pencereyi aktif, öne alınmış ve
+        görünür hale getirir; tıklama/geri yükleme olaylarında her zaman bu
+        yol izlenir.
+        """
+        try:
+            self.window.setWindowState(
+                self.window.windowState() & ~Qt.WindowState.WindowMinimized
+                | Qt.WindowState.WindowActive)
+        except Exception:
+            pass
+        try:
+            self.window.show()
+            self.window.raise_()
+            self.window.activateWindow()
+        except Exception:
+            pass
+
     def on_tray_activated(self, reason):
-        """Tepsi simgesine tıklanınca pencereyi göster/gizle."""
+        """Tepsi simgesine tıklanınca pencereyi geri yükle/göster."""
         if reason not in (QSystemTrayIcon.ActivationReason.Trigger,
                           QSystemTrayIcon.ActivationReason.DoubleClick):
             return
+        self.restore_window()
+
+    def toggle_window_visible(self):
+        """Tepsi menüsünden Göster/Gizle: pencere görünürlüğünü değiştir."""
         try:
             if self.window.isVisible():
                 self.window.hide()
             else:
-                self.window.show()
-                self.window.raise_()
-                self.window.activateWindow()
+                self.restore_window()
         except Exception:
             pass
 
@@ -251,6 +280,11 @@ class LlamaTray:
         # uygulama tepside yaşamaya devam eder (sadece tray mevcutken anlamlı).
         self.minimize_to_tray_checkbox = QCheckBox(tr("minimize_to_tray_on_close", "Kapatırken Tepside Minimize Et"))
         bottom.addWidget(self.minimize_to_tray_checkbox)
+        # llama.cpp build & install manager (v1.5.0)
+        self.llamacpp_manager_button = QPushButton(tr("button_llamacpp_manager", "🛠 llama.cpp Yöneticisi"))
+        self.llamacpp_manager_button.clicked.connect(self.open_llamacpp_manager)
+        self.llamacpp_manager_button.setFixedHeight(28)
+        bottom.addWidget(self.llamacpp_manager_button)
         self.about_button = QPushButton(tr("about_button", "ℹ️ Uygulama Hakkında"))
         self.about_button.clicked.connect(self.show_about_dialog)
         self.about_button.setFixedHeight(28)
@@ -412,14 +446,17 @@ class LlamaTray:
     def apply_translations(self):
         tr = self.get_translated
         if getattr(self, 'tray_available', False):
-            for a, k in [(self.browse_action, "menu_browse"), (self.start_server_action, "menu_start_server"),
+            for a, k in [(self.show_hide_action, "menu_show_hide"),
+                         (self.browse_action, "menu_browse"), (self.start_server_action, "menu_start_server"),
                          (self.stop_server_action, "menu_stop_server"), (self.about_action, "menu_about"),
                          (self.quit_action, "menu_quit")]:
                 a.setText(tr(k))
         if hasattr(self, 'about_button'): self.about_button.setText(tr("about_button", "ℹ️ Uygulama Hakkında"))
         if hasattr(self, 'minimize_to_tray_checkbox'):
             self.minimize_to_tray_checkbox.setText(
-                tr("minimize_to_tray_on_close", "Kapatırken Tepside Minimize Et"))
+                tr("minimize_to_tray_on_close", "Kapatirken Tepside Minimize Et"))
+        if hasattr(self, 'llamacpp_manager_button'):
+            self.llamacpp_manager_button.setText(tr("button_llamacpp_manager", "🛠 llama.cpp Yöneticisi"))
         if hasattr(self, 'tabs'):
             self.tabs.setTabText(0, tr("tab_main", "Ana"))
             self.tabs.setTabText(1, tr("tab_settings", "Ayarlar"))
@@ -438,6 +475,18 @@ class LlamaTray:
             self.language_combo.blockSignals(False)
         if hasattr(self, 'window'):
             self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {VERSION_DISPLAY}")
+
+    def open_llamacpp_manager(self):
+        """llama.cpp build & install manager dialog'ını aç."""
+        try:
+            from .components.llamacpp_manager import LlamaCppManagerDialog
+            dialog = LlamaCppManagerDialog(
+                translations_func=self.get_translated,
+                log_func=self.log,
+                parent=getattr(self, 'window', None))
+            dialog.exec()
+        except Exception as e:
+            self.log(f"❌ Hata: llama.cpp Yöneticisi açılamadı - {type(e).__name__}: {e}")
 
     def show_about_dialog(self):
         AboutDialog(translations_func=self.get_translated, icon_path=get_icon_path(),

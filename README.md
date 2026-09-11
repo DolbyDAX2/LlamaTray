@@ -28,9 +28,12 @@ LlamaTray is a lightweight and stable PyQt6-based **Llama.cpp (llama-server)** m
 ### 🆕 What's New in v1.5.0
 
 - Cross-platform installation fixes for Ubuntu (GNOME/XFCE/MATE) and Fedora (Wayland/X11): the installer now adds `~/.local/bin` to your PATH using shell-native syntax (bash/zsh/fish aware, with config-file scanning fallback), installs missing Qt6/XCB runtime libraries on Apt-based systems, and registers the app icon and `.desktop` entry (`StartupWMClass=LlamaTray`, hicolor 256x256 icon, `gtk-update-icon-cache`).
-- Proper GNOME/Wayland dock/taskbar icon grouping via `app.setDesktopFileName("llamatray.desktop")`.
+- Proper GNOME/Wayland dock/taskbar icon grouping via `app.setDesktopFileName("llamatray")` (without the `.desktop` extension — Qt appends it automatically).
 - Graceful system-tray fallback: if no tray protocol (StatusNotifier D-Bus) is available on modern GNOME/Wayland sessions, LlamaTray keeps running in window mode without unhandled exceptions.
 - New **"Minimize to Tray on Close"** setting: the close button hides the window into the system tray while the server keeps running. The tray menu gains a Quit action, and single/double-clicking the tray icon restores the window.
+- Tray recovery for MATE/XFCE/X11: clicking the tray icon always restores the window with a proper state reset (`WindowMinimized` cleared, `WindowActive` set, then `show()`/`raise_()`/`activateWindow()`), and the tray context menu now always starts with a **Show / Hide** item so the window can be recovered even on desktops that swallow left-click events.
+- Graceful terminal signal handling: `Ctrl+C` (SIGINT) now quits the app cleanly via a registered signal handler plus a 500 ms yield timer — no unhandled `KeyboardInterrupt` stack traces.
+- New **llama.cpp Manager** dialog (🛠 button in the bottom bar): detects your GPU and tools (`nvidia-smi` / `rocminfo` / `vulkaninfo` / `clinfo`), shows a recommendation banner, lets you pick Vulkan / CUDA / ROCm-HIP / SYCL / CPU, checks and installs distribution-specific build dependencies (apt/dnf/pacman/zypper), and either compiles llama.cpp from source or downloads a pre-built release binary — installed to `~/.local/bin` where LlamaTray finds it automatically.
 - Responsive UI: Main and Settings tabs are now `QScrollArea`-based, the dynamic minimum window size supports 1024x768 screens, and the Router "Active Models" table uses dynamic column resizing with its status label in a dedicated row so it never overlaps table items.
 
 ### 🆕 What's New in v1.4.0
@@ -174,6 +177,18 @@ In either mode, use **Open Web UI** to open llama.cpp in your browser. Click **S
 
 > **Note:** Router mode requires a llama-server build that supports `--models-dir` and the model router API. Closing the window automatically terminates the server.
 
+#### llama.cpp Manager (Build & Install)
+
+If you don't already have `llama-server`, use the built-in manager: click **🛠 llama.cpp Yöneticisi** in the bottom bar.
+
+1. **Hardware scan:** the dialog runs a pre-flight check (`nvidia-smi`, `rocminfo`, `vulkaninfo`, `clinfo`, `lspci`) and shows a recommendation banner, e.g. *"AMD GPU detected. Vulkan backend is recommended for best compatibility."*
+2. **Backend selection:** pick your target explicitly — Vulkan (universal), NVIDIA CUDA (`-DGGML_CUDA=ON`), AMD ROCm/HIP (`-DGGML_HIPBLAS=ON`), Intel SYCL (`-DGGML_SYCL=ON`), or CPU only.
+3. **Dependencies:** the manager detects your package manager (apt/dnf/pacman/zypper) and verifies `cmake`, a C++ compiler, and `git`. Missing packages can be installed with one click using explicit package lists (e.g. `sudo dnf install -y gcc-c++ make cmake git`), not group names.
+4. **Option A — compile from source:** clones llama.cpp into `~/llama.cpp`, configures CMake with the selected backend flag, builds `llama-server` using all cores, and symlinks the result into `~/.local/bin`.
+5. **Option B — pre-built binary:** if you don't have build tools (or compilation fails), download a pre-compiled Linux x64 release asset from llama.cpp's GitHub Releases and install it into `~/.local/bin`.
+
+LlamaTray automatically finds `llama-server` in `~/.local/bin` or `~/llama.cpp/build/bin`, so no extra configuration is needed.
+
 ### ⚙️ Advanced Settings & Profiles
 
 | Setting | Description | Default |
@@ -239,9 +254,12 @@ LlamaTray, Linux (özellikle Arch Linux / CachyOS) için geliştirilmiş, PyQt6 
 ### 🆕 v1.5.0 Yenilikleri
 
 - Ubuntu (GNOME/XFCE/MATE) ve Fedora (Wayland/X11) için çapraz platform kurulum düzeltmeleri: kurulum betiği artık `~/.local/bin` yolunu kabuğunuza özgü sözdizimiyle PATH'e ekler (bash/zsh/fish destekli, yapılandırma dosyası tarama yedeği ile), Apt tabanlı sistemlerde eksik Qt6/XCB çalışma zamanı kütüphanelerini kurar ve uygulama simgesini + `.desktop` girişini (`StartupWMClass=LlamaTray`, hicolor 256x256 simge, `gtk-update-icon-cache`) kaydeder.
-- `app.setDesktopFileName("llamatray.desktop")` ile GNOME/Wayland dock/görev çubuğu ikon gruplaması.
+- `app.setDesktopFileName("llamatray")` ile GNOME/Wayland dock/görev çubuğu ikon gruplaması (`.desktop` uzantısı olmadan — Qt onu otomatik ekler).
 - Zarif sistem tepsisi yedeği: modern GNOME/Wayland oturumlarında tray protokolü (StatusNotifier D-Bus) yoksa LlamaTray ele alınmamış istisna fırlatmaksızın pencere modunda çalışmaya devam eder.
 - Yeni **"Kapatırken Tepside Minimize Et"** ayarı: kapatma butonu pencereyi sistem tepisine gizler, sunucu çalışmaya devam eder. Tepsi menüsüne Çıkış eylemi eklendi; tepsinin tek/tıklanması pencereyi geri açar.
+- MATE/XFCE/X11 için tepsi geri yükleme düzeltmesi: tepsi simgesine tıklamak her zaman pencereyi uygun durum sıfırlamasıyla geri getirir (`WindowMinimized` temizlenir, `WindowActive` ayarlanır, ardından `show()`/`raise_()`/`activateWindow()`) ve tepsi bağlam menüsünün en üstünde her zaman bir **Göster / Gizle** öğesi bulunur — sol tık olayları yutulan masaüstlerinde bile pencere geri alınabilir.
+- Zarif terminal sinyal işleme: `Ctrl+C` (SIGINT), kayıtlı sinyal handler'ı + 500 ms yield timer'ı sayesinde uygulamayı temiz şekilde kapatır — ele alınmamış `KeyboardInterrupt` traceback'i çıkmaz.
+- Yeni **llama.cpp Yöneticisi** dialog'u (alt çubuktaki 🛠 butonu): GPU ve araçları tespit eder (`nvidia-smi` / `rocminfo` / `vulkaninfo` / `clinfo`), öneri bandı gösterir, Vulkan / CUDA / ROCm-HIP / SYCL / CPU backend seçimi yaptırır, dağıtıma özgü derleme bağımlılıklarını kontrol edip kurar (apt/dnf/pacman/zypper) ve llama.cpp'ı ya kaynaktan derler ya da hazır release binary'sini indirir — `~/.local/bin`'e kurulur, LlamaTray otomatik bulur.
 - Duyarlı arayüz: Ana ve Ayarlar sekmeleri artık `QScrollArea` tabanlı, dinamik minimum pencere boyutu 1024x768 ekranları destekler ve Router "Aktif Modeller" tablosu dinamik sütun yeniden boyutlandırma kullanır; durum etiketi kendi satırında olduğu için tablo öğeleriyle üst üste binmez.
 
 ### 🆕 v1.4.0 Yenilikleri
@@ -384,6 +402,18 @@ LlamaTray/
 Her iki modda da **Web Arayüzünü Aç** ile llama.cpp arayüzünü tarayıcıda açabilirsiniz. **Sunucuyu Durdur** butonu veya pencereyi kapatmak sunucuyu temiz şekilde sonlandırır.
 
 > **Not:** Router modu, `--models-dir` ve model router API desteğine sahip bir llama-server derlemesi gerektirir. Pencere kapatıldığında sunucu otomatik olarak sonlandırılır.
+
+#### llama.cpp Yöneticisi (Derleme & Kurulum)
+
+Elinizde `llama-server` yoksa yerleşik yöneticiyi kullanın: alt çubuktaki **🛠 llama.cpp Yöneticisi** butonuna tıklayın.
+
+1. **Donanım taraması:** dialog bir ön kontrol çalıştırır (`nvidia-smi`, `rocminfo`, `vulkaninfo`, `clinfo`, `lspci`) ve öneri bandı gösterir, ör. *"AMD GPU algılandı. En iyi uyumluluk için Vulkan backend'i önerilir."*
+2. **Backend seçimi:** hedefi açıkça seçin — Vulkan (evrensel), NVIDIA CUDA (`-DGGML_CUDA=ON`), AMD ROCm/HIP (`-DGGML_HIPBLAS=ON`), Intel SYCL (`-DGGML_SYCL=ON`) veya Sadece CPU.
+3. **Bağımlılıklar:** yönetici paket yöneticinizi (apt/dnf/pacman/zypper) tespit eder; `cmake`, C++ derleyici ve `git` varlığını doğrular. Eksik paketler grup adı değil açık paket listesiyle tek tıkla kurulabilir (ör. `sudo dnf install -y gcc-c++ make cmake git`).
+4. **Option A — kaynaktan derleme:** llama.cpp'ı `~/llama.cpp`'a klonlar, seçilen backend flag'iyle CMake yapılandırması yapar, `llama-server`'ı tüm çekirdeklerle derler ve sonucu `~/.local/bin`'e symlink olarak kurar.
+5. **Option B — hazır ikili:** derleme araçlarınız yoksa (veya derleme başarısız olursa), llama.cpp GitHub Releases'tan hazır Linux x64 release asset indirir ve `~/.local/bin`'e kurar.
+
+LlamaTray `llama-server`'ı `~/.local/bin` veya `~/llama.cpp/build/bin` içinde otomatik bulur; ek yapılandırma gerekmez.
 
 ### ⚙️ Gelişmiş Ayarlar ve Profiller
 

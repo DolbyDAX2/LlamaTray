@@ -12,6 +12,7 @@ from .server_controls import ServerControlsWidget
 from .model_selector import ModelSelectorWidget
 from .hf_downloader import HfDownloaderDialog
 from .router_settings import RouterSettingsWidget
+from .llamacpp_manager import LlamaCppManagerDialog
 
 __all__ = [
     "SystemMonitorWidget",
@@ -23,4 +24,5 @@ __all__ = [
     "ModelSelectorWidget",
     "HfDownloaderDialog",
     "RouterSettingsWidget",
+    "LlamaCppManagerDialog",
 ]
