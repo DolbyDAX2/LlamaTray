@@ -206,9 +206,11 @@
     "llm_pkgs_label": "Paketler:",
     "llm_clean_build": "🧹 Eski CMake build önbelleği temizlendi:",
     "llm_sdk_dialog_title": "SDK Eksik",
-    "llm_sdk_dialog_msg": "{backend} backend'i için gerekli SDK/derleyici ({sdk}) sistemde bulunamadı. SDK paketleri çok büyük olduğu için otomatik kurulmaz. Lütfen ilgili SDK'yı manuel kurun veya Option B (Hazır İkili İndir) seçeneğini kullanın.",
+    "llm_sdk_dialog_msg": "{backend} backend'i için bu dağıtımda ({pm}) otomatik kurulacak bir paket listesi tanımlı değil. Gerekli SDK/derleyici manuel kurulmalıdır veya Option B (Hazır İkili İndir) kullanılmalıdır.",
     "llm_build_warn_title": "Derleme Uyarısı",
-    "llm_build_warn_msg": "Seçili backend için gerekli SDK ({sdk}) bulunamadı — derleme muhtemelen başarısız olacak. Yine de devam edilsin mi?"
+    "llm_build_warn_msg": "Seçili backend için gerekli SDK ({sdk}) bulunamadı — derleme muhtemelen başarısız olacak. Yine de devam edilsin mi?",
+    "llm_copy_log": "📋 Log Kopyala",
+    "llm_pkexec_note": "🔐 Kurulum grafiksel yetkilendirme (pkexec) ile çalışıyor. Sistem şifre istemi diyalogunu görürseniz kullanıcı şifrenizi girin."
   },
   "en": {
     "config_language": "Language",
@@ -417,8 +419,10 @@
     "llm_pkgs_label": "Packages:",
     "llm_clean_build": "🧹 Old CMake build cache removed:",
     "llm_sdk_dialog_title": "Missing SDK",
-    "llm_sdk_dialog_msg": "The SDK/compiler required for the {backend} backend ({sdk}) was not found on this system. SDK packages are very large and are not installed automatically. Please install the SDK manually or use Option B (Download Pre-built Binary).",
+    "llm_sdk_dialog_msg": "No automatic package list is defined for the {backend} backend on this distribution ({pm}). The required SDK/compiler must be installed manually, or Option B (Download Pre-built Binary) should be used.",
     "llm_build_warn_title": "Build Warning",
-    "llm_build_warn_msg": "The required SDK ({sdk}) for the selected backend was not found — the build will most likely fail. Continue anyway?"
+    "llm_build_warn_msg": "The required SDK ({sdk}) for the selected backend was not found — the build will most likely fail. Continue anyway?",
+    "llm_copy_log": "📋 Copy Log",
+    "llm_pkexec_note": "Installation is running with graphical authorization (pkexec). If a system password dialog appears, enter your user password."
   }
 }
