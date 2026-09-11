@@ -452,45 +452,44 @@ class LlamaTray:
         self.language_combo.setStyleSheet(
             "QComboBox { padding: 2px 6px; }"
             "QComboBox QAbstractItemView { padding: 2px; }")
-        bottom.addWidget(self.language_combo, 0)
+        bottom.addWidget(
+            self.language_combo, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        # "Minimize to Tray on Close" ayarı: kapatma butonu pencereyi gizler,
-        # uygulama tepside yaşamaya devam eder (sadece tray mevcutken anlamlı).
+        # Dil seçici ve tepsi tercihi sol grupta kalır; ortadaki esnek spacer
+        # butonları sağa iter ve pencere boyutlanırken düzeni korur.
         self.minimize_to_tray_checkbox = QCheckBox(
             tr("minimize_to_tray_on_close", "Kapatırken Tepside Minimize Et"))
         self.minimize_to_tray_checkbox.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         self.minimize_to_tray_checkbox.setToolTip(
             self.minimize_to_tray_checkbox.text())
-        bottom.addWidget(self.minimize_to_tray_checkbox, 1)
+        bottom.addWidget(
+            self.minimize_to_tray_checkbox, 0, Qt.AlignmentFlag.AlignVCenter)
+        bottom.addStretch(1)
 
-        # Butonlar dar pencerede üst üste binmez; metin sığmazsa ElidedPushButton
-        # kontrollü olarak ... gösterir. Geniş pencerede stretch ile dengeli büyür.
+        # Butonlar doğal metin genişliğini kullanır; küçük padding ve Minimum
+        # size policy sayesinde normal pencerede elipslenmeden görünür.
         self.llamacpp_manager_button = ElidedPushButton(
             tr("button_llamacpp_manager", "🛠 llama.cpp Yöneticisi"))
         self.llamacpp_manager_button.clicked.connect(self.open_llamacpp_manager)
-        self.llamacpp_manager_button.setMinimumWidth(132)
         self.llamacpp_manager_button.setFixedHeight(28)
         self.llamacpp_manager_button.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         self.llamacpp_manager_button.setStyleSheet(
-            "QPushButton { padding-left: 6px; padding-right: 6px; }")
-        bottom.addWidget(self.llamacpp_manager_button, 1)
+            "QPushButton { padding: 4px 8px; }")
+        bottom.addWidget(
+            self.llamacpp_manager_button, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self.about_button = ElidedPushButton(
             tr("about_button", "ℹ️ Uygulama Hakkında"))
         self.about_button.clicked.connect(self.show_about_dialog)
-        self.about_button.setMinimumWidth(124)
         self.about_button.setFixedHeight(28)
         self.about_button.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         self.about_button.setStyleSheet(
-            "QPushButton { padding-left: 6px; padding-right: 6px; }")
-        bottom.addWidget(self.about_button, 1)
-
-        # Sağ tarafta gereksiz boşluk oluşmaması ve dar genişlikte layout'un
-        # widget'ları birbirinin üzerine itmemesi için stretch oranlıdır.
-        bottom.addStretch(0)
+            "QPushButton { padding: 4px 8px; }")
+        bottom.addWidget(
+            self.about_button, 0, Qt.AlignmentFlag.AlignVCenter)
 
         # Sekmeli ana layout
         # Düşük çözünürlüklerde (örn. 1024x768) içerik taşmasını/üst üste binmeyi
