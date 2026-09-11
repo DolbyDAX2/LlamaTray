@@ -8,7 +8,7 @@ Bu modül, uygulamanın giriş noktasıdır (entry point).
 import signal
 import sys
 import os
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QLockFile, QTimer
 from PyQt6.QtWidgets import QApplication
 from .ui import LlamaTray
 from .ui_utils import cleanup_tray_icon
@@ -38,6 +38,23 @@ def main():
     """Ana uygulama fonksiyonu"""
     # Crash handler'ı kur
     setup_crash_handler()
+
+    # Aynı application ID ile ikinci Qt/portal kaydı oluşmasını engelle.
+    # Özellikle GNOME Wayland'de ikinci süreç xdg-desktop-portal tarafında
+    # "Connection already associated with an application ID" üretebilir.
+    instance_lock = None
+    try:
+        lock_dir = os.path.expanduser("~/.cache/llamatray")
+        os.makedirs(lock_dir, exist_ok=True)
+        instance_lock = QLockFile(os.path.join(lock_dir, "llamatray.lock"))
+        instance_lock.setStaleLockTime(10000)
+        if not instance_lock.tryLock(100):
+            print("⚠ LlamaTray zaten çalışıyor; mevcut pencere kullanılmaya devam ediyor.")
+            return
+    except Exception as exc:
+        # Kilit altyapısı kullanılamazsa uygulamayı tray desteğinden mahrum bırakma.
+        print(f"⚠ Tekil uygulama kilidi oluşturulamadı: {exc}")
+        instance_lock = None
 
     # QT_QPA_PLATFORM_THEME ortam değişkenini dinamik olarak ayarla
     # Mevcut masaüstü ortamını tespit et ve ona göre ayar yap
