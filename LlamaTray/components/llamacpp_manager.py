@@ -43,13 +43,21 @@ BACKEND_ORDER = ["vulkan", "cuda", "rocm", "sycl", "cpu"]
 
 BUILD_DIR = os.path.join(BUILD_ROOT, "build")
 
-# package manager -> install komutu şablonu (açık paket listesiyle)
+# package manager -> install komutu şablonu (açık paket listesiyle).
+# Çalıştırma pkexec ile yapılır (grafiksel yetkilendirme); pkexec yoksa sudo.
 PM_INSTALL_CMD = {
-    "apt": lambda pkgs: ["sudo", "apt", "install", "-y"] + pkgs,
-    "dnf": lambda pkgs: ["sudo", "dnf", "install", "-y"] + pkgs,
-    "pacman": lambda pkgs: ["sudo", "pacman", "-S", "--needed"] + pkgs,
-    "zypper": lambda pkgs: ["sudo", "zypper", "install", "-y"] + pkgs,
+    "apt": lambda pkgs: ["apt", "install", "-y"] + pkgs,
+    "dnf": lambda pkgs: ["dnf", "install", "-y"] + pkgs,
+    "pacman": lambda pkgs: ["pacman", "-S", "--needed"] + pkgs,
+    "zypper": lambda pkgs: ["zypper", "install", "-y"] + pkgs,
 }
+
+
+def build_install_cmd(pm, pkgs):
+    """Install komutunu hazırla; mümkünse pkexec (grafiksel şifre istemi) kullan."""
+    base = PM_INSTALL_CMD[pm](pkgs)
+    exe = shutil.which("pkexec") or "sudo"
+    return [exe] + base
 
 # backend -> dinamik bağımlılık tanımları
 #   sdk_tool    : eksikse "manuel kurulum / Option B" önerilecek büyük SDK aracı
@@ -71,34 +79,40 @@ BACKEND_DEPS = {
         "extra_tools": ("glslc",),
         "pkgs": {
             "apt": ["build-essential", "cmake", "git",
-                    "libvulkan-dev", "vulkan-tools", "glslc"],
+                    "libvulkan-dev", "vulkan-tools", "glslc",
+                    "spirv-headers"],
             "dnf": ["gcc-c++", "make", "cmake", "git",
-                    "vulkan-headers", "vulkan-loader-devel", "glslc"],
+                    "vulkan-headers", "vulkan-loader-devel", "glslc",
+                    "spirv-headers"],
             "pacman": ["base-devel", "cmake", "git",
-                       "vulkan-devel", "shaderc"],
+                       "vulkan-devel", "shaderc", "spirv-headers"],
             "zypper": ["gcc-c++", "make", "cmake", "git", "libvulkan-devel"],
         },
     },
     "cuda": {
-        # CUDA Toolkit büyük bir SDK: eksikse otomatik kurulmaz (bilgi diyalog).
-        # nvcc mevcutken yalnızca temel derleme paketleri kurulur.
+        # Dağıtımda paket listesi varsa NVIDIA toolkit otomatik kurulur;
+        # liste yoksa (ör. zypper) manuel kurulum/Option B önerilir.
         "sdk_tool": "nvcc",
         "extra_tools": ("nvcc",),
         "pkgs": {
-            "apt": ["build-essential", "cmake", "git"],
-            "dnf": ["gcc-c++", "make", "cmake", "git"],
-            "pacman": ["base-devel", "cmake", "git"],
-            "zypper": ["gcc-c++", "make", "cmake", "git"],
+            "apt": ["build-essential", "cmake", "git",
+                    "nvidia-cuda-toolkit", "nvidia-cuda-dev", "libcuda1"],
+            "dnf": ["gcc-c++", "make", "cmake", "git",
+                    "xorg-x11-drv-nvidia-cuda-devel", "cuda-toolkit"],
+            "pacman": ["base-devel", "cmake", "git",
+                       "cuda", "nvidia-utils"],
         },
     },
     "rocm": {
         "sdk_tool": "hipcc",
         "extra_tools": ("hipcc",),
         "pkgs": {
-            "apt": ["build-essential", "cmake", "git"],
-            "dnf": ["gcc-c++", "make", "cmake", "git"],
-            "pacman": ["base-devel", "cmake", "git"],
-            "zypper": ["gcc-c++", "make", "cmake", "git"],
+            "apt": ["build-essential", "cmake", "git",
+                    "rocm-hip-sdk", "hipcc", "rocminfo"],
+            "dnf": ["gcc-c++", "make", "cmake", "git",
+                    "rocm-hip-devel", "rocminfo"],
+            "pacman": ["base-devel", "cmake", "git",
+                       "rocm-hip-sdk", "rocminfo"],
         },
     },
     "sycl": {
@@ -266,6 +280,7 @@ class BuildWorker(QThread):
     log_line = pyqtSignal(str)
     progress = pyqtSignal(int)
     finished_build = pyqtSignal(bool, str)
+    version_detected = pyqtSignal(str)
 
     def __init__(self, backend_key, parent=None):
         super().__init__(parent)
@@ -338,6 +353,29 @@ class BuildWorker(QThread):
             self.log_line.emit(f"⚠ ~/.local/bin kurulumu başarısız: {e}")
             return None
 
+    def _report_version(self):
+        """Sürüm/commit takibi: git describe --tags --always (UI + log)."""
+        ver = ""
+        try:
+            desc = subprocess.run(
+                ["git", "-C", BUILD_ROOT, "describe", "--tags", "--always"],
+                capture_output=True, text=True, timeout=10)
+            if desc.returncode == 0:
+                ver = desc.stdout.strip()
+        except Exception:
+            pass
+        if not ver:
+            try:
+                rev = subprocess.run(
+                    ["git", "-C", BUILD_ROOT, "rev-parse", "--short", "HEAD"],
+                    capture_output=True, text=True, timeout=10)
+                if rev.returncode == 0:
+                    ver = rev.stdout.strip()
+            except Exception:
+                pass
+        if ver:
+            self.version_detected.emit(ver)
+
     def run(self):
         label, _flags = BACKENDS[self.backend_key]
         cfg_flags = cmake_flags_for(self.backend_key)
@@ -361,6 +399,9 @@ class BuildWorker(QThread):
                 if not ok:
                     self.finished_build.emit(False, "")
                     return
+
+            # Sürüm takibi: derlenen kodun tag/commit'i (git describe)
+            self._report_version()
 
             # Adım 2: cmake configure (seçilen backend ON, diğerleri açıkça OFF)
             cfg = ["cmake", "-S", BUILD_ROOT, "-B", BUILD_DIR,
@@ -680,8 +721,12 @@ class LlamaCppManagerDialog(QDialog):
         self.stop_btn = QPushButton(self._tr("llm_stop", "Durdur"))
         self.stop_btn.clicked.connect(self.stop_all)
         self.stop_btn.setEnabled(False)
+        self.git_version_label = QLabel("—")
+        self.git_version_label.setToolTip(
+            "llama.cpp kaynak sürümü (git describe --tags --always)")
         build_layout.addWidget(self.build_start_btn)
         build_layout.addWidget(self.stop_btn)
+        build_layout.addWidget(self.git_version_label)
         content_layout.addWidget(build_group)
 
         # 5) Option B: hazır ikili
@@ -695,7 +740,7 @@ class LlamaCppManagerDialog(QDialog):
         scroll.setWidget(content)
         layout.addWidget(scroll, stretch=1)
 
-        # 6) İlerleme + log (scroll alanı dışında, sabit)
+        # 6) İlerleme + log (scroll alanı dışında, sabit; canlı & kopyalanabilir)
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
@@ -703,7 +748,14 @@ class LlamaCppManagerDialog(QDialog):
         self.log_view.setReadOnly(True)
         self.log_view.setMaximumBlockCount(2000)
         self.log_view.setMinimumHeight(120)
+        log_row = QHBoxLayout()
+        self.copy_log_btn = QPushButton(self._tr("llm_copy_log", "📋 Log Kopyala"))
+        self.copy_log_btn.setToolTip(
+            "Tüm logu panoya kopyala (GitHub Issue'a yapıştırılmak için)")
+        self.copy_log_btn.clicked.connect(self.copy_log)
+        log_row.addWidget(self.copy_log_btn)
         layout.addWidget(self.progress_bar)
+        layout.addLayout(log_row)
         layout.addWidget(self.log_view)
 
         self.refresh_dep_status()
@@ -721,6 +773,20 @@ class LlamaCppManagerDialog(QDialog):
 
     def _append_log(self, text):
         self.log_view.appendPlainText(text)
+
+    def copy_log(self):
+        """Tüm logu panoya kopyala (GitHub Issue'a iletmek için)."""
+        try:
+            QApplication.clipboard().setText(self.log_view.toPlainText())
+            self._append_log("📋 Log panoya kopyalandı.")
+        except Exception as e:
+            self._append_log(f"⚠ Log kopyalanamadı: {e}")
+
+    def on_version_detected(self, ver):
+        """Worker'ın git describe çıktısı → arayüz + log."""
+        self.git_version_label.setText(f"📌 {ver}")
+        self._append_log("📌 llama.cpp sürüm/commit (git describe --tags "
+                         f"--always): {ver}")
 
     def selected_backend(self):
         for key, radio in self.backend_radios.items():
@@ -844,25 +910,11 @@ class LlamaCppManagerDialog(QDialog):
         self.dep_install_btn.setEnabled(bool(missing and pm is not None))
 
     def install_missing_deps(self):
+        """Seçili backend'in tüm paketlerini pkexec (grafiksel auth) ile kur."""
         if self._dep_worker is not None and self._dep_worker.isRunning():
             return
         backend = self.selected_backend() or "cpu"
         spec = BACKEND_DEPS.get(backend, BACKEND_DEPS["cpu"])
-        sdk = spec.get("sdk_tool")
-        # CUDA/ROCm/SYCL: büyük SDK eksikse otomatik kurma — bilgilendir.
-        if sdk and not shutil.which(sdk):
-            QMessageBox.information(
-                self,
-                self._tr("llm_sdk_dialog_title", "SDK Eksik"),
-                self._tr("llm_sdk_dialog_msg",
-                         "{backend} backend'i için gerekli SDK/derleyici ({sdk}) "
-                         "sistemde bulunamadı. SDK paketleri çok büyük olduğu "
-                         "için otomatik kurulmaz. Lütfen ilgili SDK'yı manuel "
-                         "kurun veya Option B (Hazır İkili İndir) seçeneğini "
-                         "kullanın.")
-                .format(backend=self._tr(f"llm_backend_{backend}", backend.upper()),
-                        sdk=sdk))
-            return
         pm = detect_package_manager()
         self._pm = pm
         if not pm:
@@ -870,11 +922,26 @@ class LlamaCppManagerDialog(QDialog):
                              "(apt/dnf/pacman/zypper).")
             return
         pkgs = spec.get("pkgs", {}).get(pm)
-        cmd = PM_INSTALL_CMD[pm](pkgs) if pkgs else None
-        if not cmd:
-            self._append_log(f"⚠ '{pm}' için bu backend'in paket listesi "
-                             f"tanımlı değil.")
+        if not pkgs:
+            QMessageBox.information(
+                self,
+                self._tr("llm_sdk_dialog_title", "SDK Eksik"),
+                self._tr("llm_sdk_dialog_msg",
+                         "{backend} backend'i için bu dağıtımda ({pm}) "
+                         "otomatik kurulacak bir paket listesi tanımlı değil. "
+                         "Gerekli SDK/derleyici manuel kurulmalıdır veya Option B "
+                         "(Hazır İkili İndir) kullanılmalıdır.")
+                .format(backend=self._tr(f"llm_backend_{backend}",
+                                         backend.upper()),
+                        pm=pm))
             return
+        cmd = build_install_cmd(pm, pkgs)
+        if os.path.basename(cmd[0]) == "pkexec":
+            self._append_log(self._tr("llm_pkexec_note",
+                                      "🔐 Kurulum grafiksel yetkilendirme "
+                                      "(pkexec) ile çalışıyor. Sistem şifre "
+                                      "istemi diyalogunu görürseniz kullanıcı "
+                                      "şifrenizi girin."))
         self.dep_install_btn.setEnabled(False)
         self._dep_worker = DepInstallWorker(cmd, self)
         self._dep_worker.log_line.connect(self._append_log)
@@ -924,6 +991,7 @@ class LlamaCppManagerDialog(QDialog):
         self._build_worker.log_line.connect(self._append_log)
         self._build_worker.progress.connect(self.progress_bar.setValue)
         self._build_worker.finished_build.connect(self.on_build_finished)
+        self._build_worker.version_detected.connect(self.on_version_detected)
         self._build_worker.start()
 
     def on_build_finished(self, ok, path):
