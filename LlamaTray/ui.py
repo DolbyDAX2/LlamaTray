@@ -558,6 +558,7 @@ class LlamaTray:
             dialog = LlamaCppManagerDialog(
                 translations_func=self.get_translated,
                 log_func=self.log,
+                server_running_func=self.server_manager.is_running,
                 parent=getattr(self, 'window', None))
             dialog.exec()
         except Exception as e:

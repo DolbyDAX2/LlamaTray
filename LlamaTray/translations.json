@@ -217,7 +217,14 @@
     "llm_release_tag": "📌 llama.cpp GitHub release etiketi: {tag}",
     "log_tray_unavailable_gnome": "⚠ GNOME'da sistem tepsisi için AppIndicator/StatusNotifier eklentisi gerekir. Fedora'da 'sudo dnf install -y gnome-shell-extension-appindicator' çalıştırıp GNOME oturumunu kapatıp açın. Pencere modunda devam ediliyor.",
     "llm_rocm_apt_repo_note": "Not: Ubuntu/Debian üzerinde AMD ROCm kullanabilmek için öncelikle AMD'nin resmi ROCm APT deposunu (repo.radeon.com) sisteminize eklemeniz gerekmektedir. Standart Ubuntu depolarında bu paketler yer almaz.",
-    "llm_cuda_apt_driver_note": "Not: Ubuntu/Debian üzerinde CUDA paketleri (`libcuda1` vb.) sisteminizde resmi NVIDIA sürücülerinin kurulu olmasını gerektirir. Sürücü eksikse otomatik kurulum başarısız olabilir; alternatif olarak Hazır İkili (Option B) kullanabilirsiniz."
+    "llm_cuda_apt_driver_note": "Not: Ubuntu/Debian üzerinde CUDA paketleri (`libcuda1` vb.) sisteminizde resmi NVIDIA sürücülerinin kurulu olmasını gerektirir. Sürücü eksikse otomatik kurulum başarısız olabilir; alternatif olarak Hazır İkili (Option B) kullanabilirsiniz.",
+    "llm_remove_installation": "🗑 llama.cpp'ı Temizle",
+    "llm_remove_title": "llama.cpp Kurulumunu Sil",
+    "llm_remove_busy": "Devam eden bir derleme/kurulum var. Önce işlemin tamamlanmasını veya Durdur düğmesini bekleyin.",
+    "llm_remove_server_running": "llama-server şu anda çalışıyor. Temizlemeden önce sunucuyu durdurun.",
+    "llm_remove_none": "ℹ️ Silinecek llama.cpp kurulumu bulunamadı.",
+    "llm_remove_confirm": "Aşağıdaki llama.cpp dosyaları silinecek:\n\n{targets}\n\n~/.llamatray ayarları ve profilleri korunacaktır. Devam edilsin mi?",
+    "llm_remove_done": "✓ llama.cpp kaynakları ve kurulu llama-server temizlendi. ~/.llamatray korunmuştur."
   },
   "en": {
     "config_language": "Language",
@@ -437,6 +444,13 @@
     "llm_release_tag": "📌 llama.cpp GitHub release tag: {tag}",
     "log_tray_unavailable_gnome": "⚠ GNOME needs the AppIndicator/StatusNotifier extension for system tray support. On Fedora, run 'sudo dnf install -y gnome-shell-extension-appindicator' and log out/in of GNOME. Continuing in window mode.",
     "llm_rocm_apt_repo_note": "Note: To use AMD ROCm on Ubuntu/Debian, you must first add AMD's official ROCm APT repository (repo.radeon.com) to your system. These packages are not available in the standard Ubuntu repositories.",
-    "llm_cuda_apt_driver_note": "Note: CUDA packages (`libcuda1`, etc.) on Ubuntu/Debian require the official NVIDIA drivers to be installed on your system. If the driver is missing, automatic installation may fail; alternatively, use the Pre-built Binary (Option B)."
+    "llm_cuda_apt_driver_note": "Note: CUDA packages (`libcuda1`, etc.) on Ubuntu/Debian require the official NVIDIA drivers to be installed on your system. If the driver is missing, automatic installation may fail; alternatively, use the Pre-built Binary (Option B).",
+    "llm_remove_installation": "🗑 Remove llama.cpp",
+    "llm_remove_title": "Remove llama.cpp Installation",
+    "llm_remove_busy": "A build or installation is still running. Wait for it to finish or press Stop first.",
+    "llm_remove_server_running": "llama-server is currently running. Stop the server before cleaning the installation.",
+    "llm_remove_none": "ℹ️ No llama.cpp installation was found to remove.",
+    "llm_remove_confirm": "The following llama.cpp files will be deleted:\n\n{targets}\n\nYour ~/.llamatray settings and profiles will be preserved. Continue?",
+    "llm_remove_done": "✓ llama.cpp sources and the installed llama-server were removed. ~/.llamatray was preserved."
   }
 }
