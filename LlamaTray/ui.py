@@ -12,8 +12,8 @@ from PyQt6.QtWidgets import (
     QGroupBox, QRadioButton, QLineEdit, QScrollArea, QCheckBox,
     QSizePolicy, QStyle
 )
-from PyQt6.QtGui import QIcon, QAction, QFontMetrics
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtGui import QIcon, QAction, QFontMetrics, QPainter, QPixmap
+from PyQt6.QtCore import QTimer, Qt, QSize
 
 
 class ElidedPushButton(QPushButton):
@@ -48,7 +48,7 @@ class ElidedPushButton(QPushButton):
 
 import LlamaTray.ui_utils as ui_utils
 from .ui_utils import (load_translations, get_icon_path,
-                       get_on_icon_path)
+                       get_tray_icon_path)
 from .version import VERSION_DISPLAY
 from .monitor import SystemMonitor
 from .server import LlamaServerManager
@@ -115,12 +115,49 @@ class LlamaTray:
             if app: app.aboutToQuit.connect(self.cleanup_tray)
         except Exception: pass
 
+    @staticmethod
+    def _load_multires_icon(path):
+        """Panel/DPI boyutlarına uygun çoklu çözünürlüklü QIcon oluştur."""
+        if not os.path.exists(path):
+            return QIcon()
+        source = QIcon(path)
+        if source.isNull():
+            return QIcon()
+
+        icon = QIcon()
+        # QSystemTrayIcon'ın ayrı bir iconSize API'si yoktur; platform, bu
+        # pixmap varyantlarından panel yüksekliğine uygun olanı seçer.
+        for pixels in (16, 20, 22, 24, 32, 48, 64, 128, 256):
+            source_pixmap = source.pixmap(
+                QSize(pixels, pixels), QIcon.Mode.Normal, QIcon.State.Off)
+            if source_pixmap.isNull():
+                continue
+            # Paneldeki komşu ikonlarla aynı optik ağırlığı korumak için
+            # ikonun etrafında küçük, şeffaf bir güvenli alan bırak.
+            inner = max(1, round(pixels * 0.92))
+            scaled = source_pixmap.scaled(
+                QSize(inner, inner),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation)
+            pixmap = QPixmap(pixels, pixels)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            painter.drawPixmap(
+                (pixels - scaled.width()) // 2,
+                (pixels - scaled.height()) // 2,
+                scaled)
+            painter.end()
+            icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.Off)
+        return icon
+
     def _load_status_icons(self):
-        """Normal ve yeşil (sunucu açık) ikonları belleğe yükle."""
-        off = get_icon_path()
-        self._icon_off = QIcon(off) if os.path.exists(off) else QIcon()
-        on = get_on_icon_path()
-        self._icon_on = QIcon(on) if os.path.exists(on) else self._icon_off
+        """Normal ve yeşil ikonları yüksek çözünürlüklü olarak belleğe yükle."""
+        off = get_tray_icon_path(server_running=False)
+        self._icon_off = self._load_multires_icon(off)
+        on = get_tray_icon_path(server_running=True)
+        self._icon_on = self._load_multires_icon(on)
+        if self._icon_on.isNull():
+            self._icon_on = self._icon_off
 
     def _update_status_icon(self):
         """Sunucu durumuna göre tepsi ve pencere ikonunu güncelle.
