@@ -13,7 +13,8 @@ TRANSLATIONS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tr
 
 # İkon yolu - sadece varsayılan ikon
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-ICON_PATH = os.path.join(CURRENT_DIR, "assets", "icon.png")
+ICON_PATH = os.path.join(CURRENT_DIR, "assets", "llamatray.png")
+ICON_PATH_ON = os.path.join(CURRENT_DIR, "assets", "llamatray (on).png")
 
 if not os.path.exists(ICON_PATH):
     print(f"!!! WARNING: Icon not found, searched at: {ICON_PATH}")
@@ -84,5 +85,10 @@ def cleanup_on_exit():
 
 
 def get_icon_path():
-    """İkon yolunu döndür"""
+    """Normal (sunucu kapalı) ikon yolunu döndür"""
     return ICON_PATH
+
+
+def get_on_icon_path():
+    """Sunucu açık durumundaki yeşil ikon yolunu döndür"""
+    return ICON_PATH_ON

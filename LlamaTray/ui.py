@@ -15,7 +15,8 @@ from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import QTimer, Qt
 
 import LlamaTray.ui_utils as ui_utils
-from .ui_utils import load_translations, get_icon_path
+from .ui_utils import (load_translations, get_icon_path,
+                       get_on_icon_path)
 from .version import VERSION_DISPLAY
 from .monitor import SystemMonitor
 from .server import LlamaServerManager
@@ -42,7 +43,8 @@ class LlamaTray:
         self.server_manager = LlamaServerManager(log_callback=self.log)
         self.system_monitor = SystemMonitor()
 
-        # 2. Tray icon oluştur (get_translated hazır, widget'lar henüz gerekmiyor)
+        # 2. İkonları yükle + tray icon oluştur (widget'lar henüz gerekmiyor)
+        self._load_status_icons()
         self._init_tray_icon()
 
         # 3. Ana pencere ve tüm widget'ları oluştur
@@ -55,6 +57,11 @@ class LlamaTray:
         self.server_manager.started.connect(self._on_router_server_started)
         self.server_manager.finished.connect(lambda _code, _status: self.router_settings.stop_polling())
         self.server_manager.errorOccurred.connect(lambda _error: self.router_settings.stop_polling())
+
+        # Sunucu durumuna göre tepsi/pencere ikonu (yeşil = sunucu çalışıyor)
+        self.server_manager.started.connect(self._update_status_icon)
+        self.server_manager.finished.connect(
+            lambda _code, _status: self._update_status_icon())
 
         # 5. Konfigürasyon yükle (self.log artık log_window'a yazıyor, widget'lar mevcut)
         self.load_config()
@@ -74,6 +81,33 @@ class LlamaTray:
             if app: app.aboutToQuit.connect(self.cleanup_tray)
         except Exception: pass
 
+    def _load_status_icons(self):
+        """Normal ve yeşil (sunucu açık) ikonları belleğe yükle."""
+        off = get_icon_path()
+        self._icon_off = QIcon(off) if os.path.exists(off) else QIcon()
+        on = get_on_icon_path()
+        self._icon_on = QIcon(on) if os.path.exists(on) else self._icon_off
+
+    def _update_status_icon(self):
+        """Sunucu durumuna göre tepsi ve pencere ikonunu güncelle.
+
+        Sunucu çalışıyorsa yeşil "on" ikonu, durunca normal ikona döner.
+        """
+        try:
+            icon = self._icon_on if self.server_manager.is_running() else self._icon_off
+        except Exception:
+            return
+        try:
+            if getattr(self, 'tray_available', False) and hasattr(self, 'tray_icon'):
+                self.tray_icon.setIcon(icon)
+        except Exception:
+            pass
+        try:
+            if hasattr(self, 'window') and self.window is not None:
+                self.window.setWindowIcon(icon)
+        except Exception:
+            pass
+
     def _init_tray_icon(self):
         """Sistem tepsi ikonunu oluştur.
 
@@ -90,8 +124,7 @@ class LlamaTray:
                     "⚠ Sistem tepsisi bu ortamda kullanılamıyor. Pencere modunda devam ediliyor."))
                 return
             self.tray_icon = QSystemTrayIcon()
-            ip = get_icon_path()
-            if os.path.exists(ip): self.tray_icon.setIcon(QIcon(ip))
+            self.tray_icon.setIcon(self._icon_off)
             self.menu = QMenu()
             tr = self.get_translated
             # MATE/XFCE/X11'de sol tık olayı yutulabildiği için tepsi menüsünün
@@ -386,8 +419,8 @@ class LlamaTray:
                 try: self.cleanup_tray()
                 except Exception: pass
         self.window.closeEvent = win_close
-        ip = get_icon_path()
-        if os.path.exists(ip): self.window.setWindowIcon(QIcon(ip))
+        # İkon: sunucu durumuna göre normal/yeşil (başlangıçta normal)
+        self._update_status_icon()
 
     def get_translated(self, key, default=""):
         return self.translations.get(self.current_language, {}).get(key, default)
