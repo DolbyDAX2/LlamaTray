@@ -740,6 +740,15 @@ class LlamaCppManagerDialog(QDialog):
         scroll.setWidget(content)
         layout.addWidget(scroll, stretch=1)
 
+        # Intel SYCL manuel kurulum uyarısı (SYCL seçili ve icpx yoksa görünür)
+        self.sycl_warning_label = QLabel()
+        self.sycl_warning_label.setWordWrap(True)
+        self.sycl_warning_label.setStyleSheet(
+            "color: #8a5a00; background: #fff3e0;"
+            "border: 1px solid #ffb27a; border-radius: 4px; padding: 6px;")
+        self.sycl_warning_label.hide()
+        layout.addWidget(self.sycl_warning_label)
+
         # 6) İlerleme + log (scroll alanı dışında, sabit; canlı & kopyalanabilir)
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
@@ -872,6 +881,18 @@ class LlamaCppManagerDialog(QDialog):
                 if not radio.text().endswith(suffix):
                     radio.setText(base + suffix)
 
+    def _update_sycl_warning(self):
+        """Intel SYCL seçili ve icpx yoksa manuel kurulum uyarısını göster."""
+        backend = self.selected_backend()
+        show = (backend == "sycl" and not shutil.which("icpx"))
+        self.sycl_warning_label.setText(
+            self._tr("llm_sycl_manual_msg",
+                     "Intel SYCL için gereken 'icpx' derleyicisi standart paket "
+                     "yöneticileriyle kurulamaz. Intel oneAPI SDK'sını manuel "
+                     "olarak kurmanız gerekir. Alternatif olarak Hazır İkili "
+                     "(Option B) kullanabilirsiniz."))
+        self.sycl_warning_label.setVisible(show)
+
     def refresh_dep_status(self):
         """Seçili backend'e göre bağımlılık durumunu dinamik göster."""
         backend = self.selected_backend() or "cpu"
@@ -908,6 +929,7 @@ class LlamaCppManagerDialog(QDialog):
             self.pkgs_label.setText("")
         # Buton: herhangi bir araç eksikse (SDK dahil) aktif; pm yoksa pasif
         self.dep_install_btn.setEnabled(bool(missing and pm is not None))
+        self._update_sycl_warning()
 
     def install_missing_deps(self):
         """Seçili backend'in tüm paketlerini pkexec (grafiksel auth) ile kur."""
@@ -915,6 +937,15 @@ class LlamaCppManagerDialog(QDialog):
             return
         backend = self.selected_backend() or "cpu"
         spec = BACKEND_DEPS.get(backend, BACKEND_DEPS["cpu"])
+        # Intel SYCL: icpx paket yöneticisiyle kurulamaz → otomatik kurma, yönlendir
+        if backend == "sycl" and not shutil.which("icpx"):
+            self._update_sycl_warning()
+            self._append_log(self._tr("llm_sycl_manual_msg",
+                                      "Intel SYCL için gereken 'icpx' derleyicisi standart paket "
+                                      "yöneticileriyle kurulamaz. Intel oneAPI SDK'sını manuel "
+                                      "olarak kurmanız gerekir. Alternatif olarak Hazır İkili "
+                                      "(Option B) kullanabilirsiniz."))
+            return
         pm = detect_package_manager()
         self._pm = pm
         if not pm:
