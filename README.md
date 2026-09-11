@@ -34,6 +34,7 @@ LlamaTray is a lightweight and stable PyQt6-based **Llama.cpp (llama-server)** m
 - Tray recovery for MATE/XFCE/X11: clicking the tray icon always restores the window with a proper state reset (`WindowMinimized` cleared, `WindowActive` set, then `show()`/`raise_()`/`activateWindow()`), and the tray context menu now always starts with a **Show / Hide** item so the window can be recovered even on desktops that swallow left-click events.
 - Graceful terminal signal handling: `Ctrl+C` (SIGINT) now quits the app cleanly via a registered signal handler plus a 500 ms yield timer — no unhandled `KeyboardInterrupt` stack traces.
 - New **llama.cpp Manager** dialog (🛠 button in the bottom bar): detects your GPU and tools (`nvidia-smi` / `rocminfo` / `vulkaninfo` / `clinfo`), shows a recommendation banner, lets you pick Vulkan / CUDA / ROCm-HIP / SYCL / CPU, checks and installs distribution-specific build dependencies (apt/dnf/pacman/zypper), and either compiles llama.cpp from source or downloads a pre-built release binary — installed to `~/.local/bin` where LlamaTray finds it automatically.
+- Status-aware app icon: new `llamatray.png` (normal) and `llamatray (on).png` (green) assets — the tray **and** window icon turn green while the server is running and revert to normal when it stops.
 - Responsive UI: Main and Settings tabs are now `QScrollArea`-based, the dynamic minimum window size supports 1024x768 screens, and the Router "Active Models" table uses dynamic column resizing with its status label in a dedicated row so it never overlaps table items.
 
 ### 🆕 What's New in v1.4.0
@@ -141,7 +142,8 @@ LlamaTray/
     ├── translations.json      # Localization translations (TR/EN)
     ├── ui_utils.py            # UI helper utilities (cleanup, translation loader)
     ├── assets/                # App icons and graphics
-    │   └── icon.png           # Default llama icon
+    │   ├── llamatray.png      # Default (server off) tray/window icon
+    │   └── llamatray (on).png # Green "server running" tray/window icon
     └── components/            # UI Components Directory
         ├── __init__.py        # Components package initializer
         ├── about_dialog.py    # About/credits dialog with language support
@@ -261,6 +263,7 @@ LlamaTray, Linux (özellikle Arch Linux / CachyOS) için geliştirilmiş, PyQt6 
 - MATE/XFCE/X11 için tepsi geri yükleme düzeltmesi: tepsi simgesine tıklamak her zaman pencereyi uygun durum sıfırlamasıyla geri getirir (`WindowMinimized` temizlenir, `WindowActive` ayarlanır, ardından `show()`/`raise_()`/`activateWindow()`) ve tepsi bağlam menüsünün en üstünde her zaman bir **Göster / Gizle** öğesi bulunur — sol tık olayları yutulan masaüstlerinde bile pencere geri alınabilir.
 - Zarif terminal sinyal işleme: `Ctrl+C` (SIGINT), kayıtlı sinyal handler'ı + 500 ms yield timer'ı sayesinde uygulamayı temiz şekilde kapatır — ele alınmamış `KeyboardInterrupt` traceback'i çıkmaz.
 - Yeni **llama.cpp Yöneticisi** dialog'u (alt çubuktaki 🛠 butonu): GPU ve araçları tespit eder (`nvidia-smi` / `rocminfo` / `vulkaninfo` / `clinfo`), öneri bandı gösterir, Vulkan / CUDA / ROCm-HIP / SYCL / CPU backend seçimi yaptırır, dağıtıma özgü derleme bağımlılıklarını kontrol edip kurar (apt/dnf/pacman/zypper) ve llama.cpp'ı ya kaynaktan derler ya da hazır release binary'sini indirir — `~/.local/bin`'e kurulur, LlamaTray otomatik bulur.
+- Duruma duyarlı uygulama ikonu: yeni `llamatray.png` (normal) ve `llamatray (on).png` (yeşil) asset'leri — sunucu çalışırken tepsi **ve** pencere ikonu yeşile döner, durunca normale geri döner.
 - Duyarlı arayüz: Ana ve Ayarlar sekmeleri artık `QScrollArea` tabanlı, dinamik minimum pencere boyutu 1024x768 ekranları destekler ve Router "Aktif Modeller" tablosu dinamik sütun yeniden boyutlandırma kullanır; durum etiketi kendi satırında olduğu için tablo öğeleriyle üst üste binmez.
 
 ### 🆕 v1.4.0 Yenilikleri
@@ -368,7 +371,8 @@ LlamaTray/
     ├── translations.json      # Yerelleştirme çevirileri (TR/EN)
     ├── ui_utils.py            # UI yardımcı araçları (temizlik, çeviri yükleyici)
     ├── assets/                # Uygulama ikonları ve grafikleri
-    │   └── icon.png           # Varsayılan lama ikonu
+    │   ├── llamatray.png      # Varsayılan (sunucu kapalı) tepsi/pencere ikonu
+    │   └── llamatray (on).png # Yeşil "sunucu çalışıyor" tepsi/pencere ikonu
     └── components/            # UI Bileşenleri Dizini
         ├── __init__.py        # Bileşenler paket başlatıcı
         ├── about_dialog.py    # Hakkında/kredi diyalog penceresi (dil desteği ile)

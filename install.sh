@@ -14,7 +14,7 @@ HOME_DIR="$HOME"
 DESKTOP_DIR="$HOME_DIR/.local/share/applications"
 BIN_DIR="$HOME_DIR/.local/bin"
 VENV_DIR="$INSTALL_DIR/venv"
-ICON_SRC="$INSTALL_DIR/LlamaTray/assets/icon.png"
+ICON_SRC="$INSTALL_DIR/LlamaTray/assets/llamatray.png"
 ICON_THEME_ROOT="$HOME_DIR/.local/share/icons/hicolor"
 DESKTOP_FILE="$DESKTOP_DIR/llamatray.desktop"
 
