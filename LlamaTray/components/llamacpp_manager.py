@@ -444,6 +444,7 @@ class PrebuiltWorker(QThread):
     log_line = pyqtSignal(str)
     progress = pyqtSignal(int)
     finished_install = pyqtSignal(bool, str)
+    release_detected = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -459,6 +460,45 @@ class PrebuiltWorker(QThread):
             except Exception:
                 pass
 
+    @staticmethod
+    def _select_assets(assets):
+        """Release asset'lerini platform/mimari bilgisine toleranslı şekilde seç.
+
+        Önce Linux/Ubuntu + x86_64/x64/amd64 eşleşmesi aranır. Release asset
+        isimleri değişebildiği için tam eşleşme yoksa ilk indirilebilir .tar.gz
+        arşivi fallback olarak döndürülür.
+        """
+        downloadable = []
+        for asset in assets or []:
+            if not isinstance(asset, dict):
+                continue
+            name = str(asset.get("name") or "").strip()
+            url = str(asset.get("browser_download_url") or "").strip()
+            if name and url:
+                downloadable.append(asset)
+
+        def is_linux_x64(asset):
+            name = str(asset.get("name") or "").lower()
+            has_platform = re.search(r"(?:linux|ubuntu)", name) is not None
+            has_x64 = re.search(r"(?:x86[_-]?64|x64|amd64)", name) is not None
+            return has_platform and has_x64
+
+        exact = [asset for asset in downloadable if is_linux_x64(asset)]
+        if exact:
+            return exact, False
+
+        # Tam eşleşme yoksa ilk olası tar.gz asset'leri fallback olarak kullan.
+        tarballs = [asset for asset in downloadable
+                    if str(asset.get("name") or "").lower().endswith(".tar.gz")]
+        if tarballs:
+            return tarballs, True
+
+        return [], False
+
+    def _fallback_asset_message(self):
+        return ("ℹ️ Tam Linux x64 asset eşleşmesi bulunamadı; ilk uygun .tar.gz "
+                "asset'i fallback olarak seçiliyor.")
+
     def run(self):
         import requests
         tmpdir = None
@@ -467,24 +507,31 @@ class PrebuiltWorker(QThread):
             r = requests.get(RELEASES_API_URL, timeout=30, headers={
                 "Accept": "application/vnd.github+json", "User-Agent": "LlamaTray"})
             r.raise_for_status()
-            assets = r.json().get("assets", [])
+            release_data = r.json()
+            assets = release_data.get("assets", []) if isinstance(release_data, dict) else []
+            tag_name = str(release_data.get("tag_name") or "").strip()
+            if tag_name:
+                # Option B sürüm etiketi commit hash'i değil, GitHub tag'idir.
+                self.release_detected.emit(tag_name)
         except Exception as e:
             self.log_line.emit(f"❌ Release bilgisi alınamadı: {e}")
             self.finished_install.emit(False, "")
             return
 
-        candidates = [a for a in assets
-                      if re.search(r"linux.*(x64|amd64)", a.get("name", ""), re.I)]
-        if not candidates:
-            candidates = [a for a in assets if re.search(r"linux", a.get("name", ""), re.I)]
+        candidates, used_fallback = self._select_assets(assets)
         if not candidates:
             self.log_line.emit("❌ Son release'te Linux x64 asset bulunamadı.")
             self.finished_install.emit(False, "")
             return
+        if used_fallback:
+            self.log_line.emit(self._fallback_asset_message())
 
-        # Vulkan derlemesini tercih et (evrensel)
-        chosen = next((a for a in candidates
-                       if "vulkan" in a.get("name", "").lower()), candidates[0])
+        # Vulkan derlemesini tercih et (evrensel); fallback'te listedeki ilk asset'i koru.
+        if used_fallback:
+            chosen = candidates[0]
+        else:
+            chosen = next((a for a in candidates
+                           if "vulkan" in a.get("name", "").lower()), candidates[0])
         name = chosen["name"]
         url = chosen["browser_download_url"]
         size = int(chosen.get("size") or 0)
@@ -1062,11 +1109,20 @@ class LlamaCppManagerDialog(QDialog):
             return
         self.progress_bar.setValue(0)
         self._set_busy(True, kind="prebuilt")
+        self.git_version_label.setText("—")
         self._prebuilt_worker = PrebuiltWorker(self)
         self._prebuilt_worker.log_line.connect(self._append_log)
         self._prebuilt_worker.progress.connect(self.progress_bar.setValue)
+        self._prebuilt_worker.release_detected.connect(self.on_release_detected)
         self._prebuilt_worker.finished_install.connect(self.on_prebuilt_finished)
         self._prebuilt_worker.start()
+
+    def on_release_detected(self, tag):
+        """Option B için GitHub release tag'ini göster; commit hash kullanma."""
+        self.git_version_label.setText(f"📌 {tag}")
+        self._append_log(self._tr(
+            "llm_release_tag", "📌 llama.cpp GitHub release etiketi: {tag}")
+            .format(tag=tag))
 
     def on_prebuilt_finished(self, ok, path):
         self._set_busy(False, kind="prebuilt")
