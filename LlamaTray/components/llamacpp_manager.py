@@ -98,7 +98,7 @@ BACKEND_DEPS = {
             "apt": ["build-essential", "cmake", "git",
                     "nvidia-cuda-toolkit", "nvidia-cuda-dev", "libcuda1"],
             "dnf": ["gcc-c++", "make", "cmake", "git",
-                    "xorg-x11-drv-nvidia-cuda-devel", "cuda-toolkit"],
+                    "cuda-devel"],
             "pacman": ["base-devel", "cmake", "git",
                        "cuda", "nvidia-utils"],
         },
