@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QGroupBox, QRadioButton, QLineEdit, QScrollArea, QCheckBox,
     QSizePolicy, QStyle
 )
-from PyQt6.QtGui import QIcon, QAction, QFontMetrics, QPainter, QPixmap
+from PyQt6.QtGui import QIcon, QAction, QFontMetrics, QPainter, QPixmap, QImage
 from PyQt6.QtCore import QTimer, Qt, QSize
 
 
@@ -116,46 +116,67 @@ class LlamaTray:
         except Exception: pass
 
     @staticmethod
-    def _load_multires_icon(path):
-        """Panel/DPI boyutlarına uygun çoklu çözünürlüklü QIcon oluştur."""
+    def _load_fixed_tray_icon(path, size=24):
+        """İçeriği kırpılmış tek bir fiziksel boyutta tray QIcon oluştur."""
         if not os.path.exists(path):
             return QIcon()
-        source = QIcon(path)
+        source_icon = QIcon(path)
+        source = source_icon.pixmap(
+            QSize(256, 256), QIcon.Mode.Normal, QIcon.State.Off)
         if source.isNull():
             return QIcon()
 
-        icon = QIcon()
-        # QSystemTrayIcon'ın ayrı bir iconSize API'si yoktur; platform, bu
-        # pixmap varyantlarından panel yüksekliğine uygun olanı seçer.
-        for pixels in (16, 20, 22, 24, 32, 48, 64, 128, 256):
-            source_pixmap = source.pixmap(
-                QSize(pixels, pixels), QIcon.Mode.Normal, QIcon.State.Off)
-            if source_pixmap.isNull():
-                continue
-            # Paneldeki komşu ikonlarla aynı optik ağırlığı korumak için
-            # ikonun etrafında küçük, şeffaf bir güvenli alan bırak.
-            inner = max(1, round(pixels * 0.92))
-            scaled = source_pixmap.scaled(
-                QSize(inner, inner),
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation)
-            pixmap = QPixmap(pixels, pixels)
-            pixmap.fill(Qt.GlobalColor.transparent)
-            painter = QPainter(pixmap)
-            painter.drawPixmap(
-                (pixels - scaled.width()) // 2,
-                (pixels - scaled.height()) // 2,
-                scaled)
-            painter.end()
-            icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.Off)
-        return icon
+        image = source.toImage().convertToFormat(
+            QImage.Format.Format_RGBA8888)
+        width, height = image.width(), image.height()
+        left, top, right, bottom = width, height, -1, -1
+        corner_pixels = (
+            image.pixel(0, 0), image.pixel(width - 1, 0),
+            image.pixel(0, height - 1), image.pixel(width - 1, height - 1))
+        has_transparent_margin = any(
+            ((pixel >> 24) & 0xFF) < 250 for pixel in corner_pixels)
+        for y in range(height):
+            for x in range(width):
+                pixel = image.pixel(x, y)
+                alpha = (pixel >> 24) & 0xFF
+                red = (pixel >> 16) & 0xFF
+                green = (pixel >> 8) & 0xFF
+                blue = pixel & 0xFF
+                # Alpha'lı normal ikonlarda şeffaf kenarı; RGB/ICO on
+                # ikonunda ise siyah arka plan kenarını kırp.
+                visible = (alpha > 8 if has_transparent_margin
+                           else max(red, green, blue) > 24)
+                if visible:
+                    left, right = min(left, x), max(right, x)
+                    top, bottom = min(top, y), max(bottom, y)
+        if right < left or bottom < top:
+            return QIcon()
+
+        cropped = image.copy(left, top, right - left + 1, bottom - top + 1)
+        side = max(cropped.width(), cropped.height())
+        square = QImage(side, side, QImage.Format.Format_RGBA8888)
+        square.fill(0)
+        painter = QPainter(square)
+        painter.drawImage(
+            (side - cropped.width()) // 2,
+            (side - cropped.height()) // 2,
+            cropped)
+        painter.end()
+
+        pixmap = QPixmap.fromImage(square).scaled(
+            QSize(size, size),
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.SmoothTransformation)
+        # QIcon(pixmap): tray yalnızca bu net, sabit boyuttaki pixmap'i alır;
+        # platformun ikinci kez küçültüp bulanıklaştırması önlenir.
+        return QIcon(pixmap)
 
     def _load_status_icons(self):
-        """Normal ve yeşil ikonları yüksek çözünürlüklü olarak belleğe yükle."""
+        """Tepsi ve pencere için net, sabit 24x24 ikonlar yükle."""
         off = get_tray_icon_path(server_running=False)
-        self._icon_off = self._load_multires_icon(off)
+        self._icon_off = self._load_fixed_tray_icon(off, 24)
         on = get_tray_icon_path(server_running=True)
-        self._icon_on = self._load_multires_icon(on)
+        self._icon_on = self._load_fixed_tray_icon(on, 24)
         if self._icon_on.isNull():
             self._icon_on = self._icon_off
 
