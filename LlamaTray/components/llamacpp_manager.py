@@ -83,7 +83,7 @@ BACKEND_DEPS = {
                     "spirv-headers"],
             "dnf": ["gcc-c++", "make", "cmake", "git",
                     "vulkan-headers", "vulkan-loader-devel", "glslc",
-                    "spirv-headers"],
+                    "spirv-headers-devel"],
             "pacman": ["base-devel", "cmake", "git",
                        "vulkan-devel", "shaderc", "spirv-headers"],
             "zypper": ["gcc-c++", "make", "cmake", "git", "libvulkan-devel"],
