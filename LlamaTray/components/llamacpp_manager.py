@@ -674,9 +674,10 @@ class LlamaCppManagerDialog(QDialog):
         self.hw_status_label.setWordWrap(True)
         self.reco_banner = QLabel()
         self.reco_banner.setWordWrap(True)
+        # Koyu tema uyumlu bilgi kutusu: gri/füme zemin + açık gri/beyaz yazı
         self.reco_banner.setStyleSheet(
-            "padding: 6px; background-color: #e8f0fe; border: 1px solid #4a90d9;"
-            "border-radius: 4px;")
+            "padding: 6px; background-color: #3c4043; color: #e8eaed;"
+            "border: 1px solid #5f6368; border-radius: 4px;")
         hw_layout.addWidget(self.hw_status_label)
         hw_layout.addWidget(self.reco_banner)
         content_layout.addWidget(hw_group)
@@ -715,7 +716,8 @@ class LlamaCppManagerDialog(QDialog):
 
         # 4) Option A: kaynak derleme
         build_group = QGroupBox(self._tr("llm_build_group", "Kaynaktan Derle (Option A)"))
-        build_layout = QHBoxLayout(build_group)
+        build_box = QVBoxLayout(build_group)
+        build_layout = QHBoxLayout()
         self.build_start_btn = QPushButton(self._tr("llm_build_start", "Derlemeyi Başlat"))
         self.build_start_btn.clicked.connect(self.start_build)
         self.stop_btn = QPushButton(self._tr("llm_stop", "Durdur"))
@@ -727,14 +729,30 @@ class LlamaCppManagerDialog(QDialog):
         build_layout.addWidget(self.build_start_btn)
         build_layout.addWidget(self.stop_btn)
         build_layout.addWidget(self.git_version_label)
+        build_box.addLayout(build_layout)
+        self.build_desc_label = QLabel(
+            self._tr("llm_build_desc",
+                     "llama.cpp projesini güncel kaynak kodundan sizin donanımınıza "
+                     "özel olarak sıfırdan derler (En yüksek performans)."))
+        self.build_desc_label.setStyleSheet("color: #9e9e9e; font-size: 11px;")
+        build_box.addWidget(self.build_desc_label)
         content_layout.addWidget(build_group)
 
         # 5) Option B: hazır ikili
         pre_group = QGroupBox(self._tr("llm_prebuilt_group", "Hazır İkili İndir (Option B)"))
-        pre_layout = QHBoxLayout(pre_group)
+        pre_box = QVBoxLayout(pre_group)
+        pre_layout = QHBoxLayout()
         self.prebuilt_btn = QPushButton(self._tr("llm_prebuilt_start", "İndir ve Kur"))
         self.prebuilt_btn.clicked.connect(self.start_prebuilt)
         pre_layout.addWidget(self.prebuilt_btn)
+        pre_box.addLayout(pre_layout)
+        self.prebuilt_desc_label = QLabel(
+            self._tr("llm_prebuilt_desc",
+                     "Derleme adımlarıyla uğraşmadan son sürüm önceden derlenmiş "
+                     "hazır sunucu ikilisini doğrudan indirip kullanmanızı sağlar "
+                     "(En hızlı başlangıç)."))
+        self.prebuilt_desc_label.setStyleSheet("color: #9e9e9e; font-size: 11px;")
+        pre_box.addWidget(self.prebuilt_desc_label)
         content_layout.addWidget(pre_group)
 
         scroll.setWidget(content)
