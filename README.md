@@ -93,6 +93,16 @@ llamatray
 
 The installer automatically detects Fedora and installs `python3` via `dnf` if needed.
 
+#### Uninstall
+
+```bash
+# From the repository root:
+./uninstall.sh                 # removes everything
+./uninstall.sh --keep-config   # keep saved settings & profiles (~/.llamatray)
+```
+
+Removes the launcher (`~/.local/bin/llamatray`), the `.desktop` entry, the hicolor icon, and the PATH entries the installer added (bash/zsh/fish). System packages are shared dependencies and are kept. If you installed via AUR, use `yay -Rsn llamatray` instead.
+
 #### Manual Installation
 
 ```bash
@@ -294,6 +304,16 @@ llamatray
 ```
 
 Kurulum betiği Fedora'yı otomatik olarak tespit eder ve gerekirse `dnf` ile `python3` kurulumunu yapar.
+
+#### Kaldırma
+
+```bash
+# Depo kök dizininden:
+./uninstall.sh                 # her şeyi kaldırır
+./uninstall.sh --keep-config   # kayıtlı ayarları ve profilleri (~/.llamatray) korur
+```
+
+Başlatıcıyı (`~/.local/bin/llamatray`), `.desktop` girişini, hicolor simgesini ve kurulum betiğinin eklediği PATH satırlarını (bash/zsh/fish) kaldırır. Sistem paketleri ortak bağımlılıklardır ve korunur. AUR üzerinden kurduysanız bunun yerine `yay -Rsn llamatray` kullanın.
 
 #### Manuel Kurulum
 
