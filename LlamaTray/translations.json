@@ -211,7 +211,9 @@
     "llm_build_warn_msg": "Seçili backend için gerekli SDK ({sdk}) bulunamadı — derleme muhtemelen başarısız olacak. Yine de devam edilsin mi?",
     "llm_copy_log": "📋 Log Kopyala",
     "llm_pkexec_note": "🔐 Kurulum grafiksel yetkilendirme (pkexec) ile çalışıyor. Sistem şifre istemi diyalogunu görürseniz kullanıcı şifrenizi girin.",
-    "llm_sycl_manual_msg": "Intel SYCL için gereken 'icpx' derleyicisi standart paket yöneticileriyle kurulamaz. Intel oneAPI SDK'sını manuel olarak kurmanız gerekir. Alternatif olarak Hazır İkili (Option B) kullanabilirsiniz."
+    "llm_sycl_manual_msg": "Intel SYCL için gereken 'icpx' derleyicisi standart paket yöneticileriyle kurulamaz. Intel oneAPI SDK'sını manuel olarak kurmanız gerekir. Alternatif olarak Hazır İkili (Option B) kullanabilirsiniz.",
+    "llm_build_desc": "llama.cpp projesini güncel kaynak kodundan sizin donanımınıza özel olarak sıfırdan derler (En yüksek performans).",
+    "llm_prebuilt_desc": "Derleme adımlarıyla uğraşmadan son sürüm önceden derlenmiş hazır sunucu ikilisini doğrudan indirip kullanmanızı sağlar (En hızlı başlangıç)."
   },
   "en": {
     "config_language": "Language",
@@ -425,6 +427,8 @@
     "llm_build_warn_msg": "The required SDK ({sdk}) for the selected backend was not found — the build will most likely fail. Continue anyway?",
     "llm_copy_log": "📋 Copy Log",
     "llm_pkexec_note": "Installation is running with graphical authorization (pkexec). If a system password dialog appears, enter your user password.",
-    "llm_sycl_manual_msg": "The 'icpx' compiler required for Intel SYCL cannot be installed with standard package managers. You must install the Intel oneAPI SDK manually. Alternatively, you can use the Pre-built Binary (Option B)."
+    "llm_sycl_manual_msg": "The 'icpx' compiler required for Intel SYCL cannot be installed with standard package managers. You must install the Intel oneAPI SDK manually. Alternatively, you can use the Pre-built Binary (Option B).",
+    "llm_build_desc": "Compiles the llama.cpp project from the latest source code, specifically for your hardware (Highest performance).",
+    "llm_prebuilt_desc": "Lets you directly download and use the latest pre-built server binary without dealing with build steps (Fastest start)."
   }
 }
