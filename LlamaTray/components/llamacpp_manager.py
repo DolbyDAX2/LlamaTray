@@ -910,10 +910,9 @@ class LlamaCppManagerDialog(QDialog):
         self.delete_llamacpp_btn = QPushButton(
             self._tr("llm_remove_installation", "🗑 llama.cpp'ı Temizle"))
         self.delete_llamacpp_btn.clicked.connect(self.remove_llamacpp_installation)
+        # Buton normal tema görünümünü korur; yalnızca yerleşimde daha kompakt tutulur.
         self.delete_llamacpp_btn.setFixedHeight(24)
         self.delete_llamacpp_btn.setMaximumWidth(150)
-        self.delete_llamacpp_btn.setStyleSheet(
-            "color: #888; padding: 2px 6px; font-size: 11px;")
         log_row.addWidget(self.delete_llamacpp_btn)
         layout.addWidget(self.progress_bar)
         layout.addLayout(log_row)
