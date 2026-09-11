@@ -282,6 +282,7 @@ class BuildWorker(QThread):
     progress = pyqtSignal(int)
     finished_build = pyqtSignal(bool, str)
     version_detected = pyqtSignal(str)
+    release_detected = pyqtSignal(str)
 
     def __init__(self, backend_key, parent=None):
         super().__init__(parent)
@@ -377,6 +378,21 @@ class BuildWorker(QThread):
         if ver:
             self.version_detected.emit(ver)
 
+    def _report_release_tag(self):
+        """GitHub Releases API'sinden tag_name al ve UI'ya gönder."""
+        try:
+            import requests
+            response = requests.get(RELEASES_API_URL, timeout=15, headers={
+                "Accept": "application/vnd.github+json", "User-Agent": "LlamaTray"})
+            response.raise_for_status()
+            data = response.json()
+            tag = str(data.get("tag_name") or "").strip() if isinstance(data, dict) else ""
+            if tag:
+                self.release_detected.emit(tag)
+        except Exception as exc:
+            # Ağ yoksa yerel git sürüm bilgisiyle derlemeye devam et.
+            self.log_line.emit(f"⚠ GitHub release tag alınamadı; yerel kaynak bilgisi kullanılacak: {exc}")
+
     def run(self):
         label, _flags = BACKENDS[self.backend_key]
         cfg_flags = cmake_flags_for(self.backend_key)
@@ -401,8 +417,11 @@ class BuildWorker(QThread):
                     self.finished_build.emit(False, "")
                     return
 
-            # Sürüm takibi: derlenen kodun tag/commit'i (git describe)
+            # Önce yerel checkout bilgisini logla, ardından GitHub release tag'ini
+            # arayüz etiketi için gönder. Böylece Option A da kısa hash yerine
+            # örneğin b10909 gösterir; ağ yoksa yerel bilgiyle devam edilir.
             self._report_version()
+            self._report_release_tag()
 
             # Adım 2: cmake configure (seçilen backend ON, diğerleri açıkça OFF)
             cfg = ["cmake", "-S", BUILD_ROOT, "-B", BUILD_DIR,
@@ -1182,6 +1201,7 @@ class LlamaCppManagerDialog(QDialog):
         self._build_worker.progress.connect(self.progress_bar.setValue)
         self._build_worker.finished_build.connect(self.on_build_finished)
         self._build_worker.version_detected.connect(self.on_version_detected)
+        self._build_worker.release_detected.connect(self.on_release_detected)
         self._build_worker.start()
 
     def on_build_finished(self, ok, path):
