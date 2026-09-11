@@ -6,7 +6,7 @@
 #   - ~/.local/share/applications/llamatray.desktop
 #   - hicolor icon entry (+ icon cache refresh)
 #   - PATH entries added to shell rc files (bash/zsh/fish)
-#   - ~/.llamatray config & profiles (unless --keep-config)
+# NOTE: ~/.llamatray (saved settings & profiles) is NEVER removed by this script.
 # System packages (python3, libxcb*) are shared dependencies and are kept.
 #
 set -euo pipefail
@@ -30,14 +30,13 @@ info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
-KEEP_CONFIG=0
 for arg in "$@"; do
     case "$arg" in
-        --keep-config) KEEP_CONFIG=1 ;;
         -h|--help)
-            echo "Usage: ./uninstall.sh [--keep-config]"
+            echo "Usage: ./uninstall.sh"
             echo ""
-            echo "  --keep-config   Keep ~/.llamatray (saved settings & profiles)"
+            echo "  Removes the launcher, desktop entry, icon and installer-added"
+            echo "  PATH entries. ~/.llamatray (settings & profiles) is always kept."
             exit 0
             ;;
         *) error "Unknown option: $arg"; exit 1 ;;
@@ -130,17 +129,7 @@ remove_path_entries() {
     fi
 }
 
-remove_config() {
-    if [ ! -d "$CONFIG_DIR" ]; then
-        return 0
-    fi
-    if [ "$KEEP_CONFIG" -eq 1 ]; then
-        info "Keeping config directory (--keep-config): $CONFIG_DIR"
-    else
-        rm -rf "$CONFIG_DIR"
-        info "Removed config & profiles: $CONFIG_DIR"
-    fi
-}
+# NOTE: remove_config intentionally does not exist — ~/.llamatray is never deleted.
 
 main() {
     echo ""
@@ -153,15 +142,13 @@ main() {
     remove_desktop_entry
     remove_icon
     remove_path_entries
-    remove_config
 
     echo ""
     info "Uninstall complete."
-    echo "  - System packages (python3, libxcb*) are shared dependencies and were kept."
-    if [ "$KEEP_CONFIG" -eq 0 ]; then
-        echo "  - Saved settings/profiles (~/.llamatray) were removed."
-        echo "    Re-run with --keep-config to preserve them."
+    if [ -d "$CONFIG_DIR" ]; then
+        info "Saved settings & profiles kept: $CONFIG_DIR (never removed by this script)"
     fi
+    echo "  - System packages (python3, libxcb*) are shared dependencies and were kept."
     echo "  - If you installed from a cloned repository, remove it manually:"
     echo "      rm -rf <LlamaTray repository directory>"
     echo ""
