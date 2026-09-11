@@ -93,7 +93,8 @@ BACKEND_DEPS = {
                     "vulkan-headers", "vulkan-loader-devel", "glslc",
                     "spirv-headers-devel"],
             "pacman": ["base-devel", "cmake", "git",
-                       "vulkan-devel", "shaderc", "spirv-headers"],
+                       "vulkan-devel", "vulkan-headers", "shaderc",
+                       "spirv-headers"],
             "zypper": ["gcc-c++", "make", "cmake", "git", "libvulkan-devel"],
         },
     },
@@ -192,6 +193,31 @@ def check_build_tools():
         if p:
             tools[t] = p
     return tools
+
+
+def is_package_installed(pm, package):
+    """Paket yöneticisine göre paketin gerçekten kurulu olup olmadığını denetle."""
+    try:
+        if pm == "pacman":
+            # base-devel bir meta/grup paketidir; temel araçlar kuruluysa
+            # grubun işlevsel olarak mevcut olduğunu kabul et.
+            if package == "base-devel":
+                return all(shutil.which(tool) for tool in ("make", "g++"))
+            command = ["pacman", "-Q", package]
+        elif pm == "apt":
+            command = ["dpkg-query", "-W", "-f=${Status}", package]
+        elif pm in ("dnf", "zypper"):
+            command = ["rpm", "-q", package]
+        else:
+            return False
+        result = subprocess.run(
+            command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, timeout=3, check=False)
+        if pm == "apt":
+            return result.returncode == 0 and "install ok installed" in result.stdout
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 class HardwareScanWorker(QThread):
@@ -1220,14 +1246,29 @@ class LlamaCppManagerDialog(QDialog):
             if not mark:
                 missing = True
         self.tools_label.setText("\n".join(lines))
-        # Bu backend + pm için otomatik kurulacak paket listesi
+        # Bu backend + pm için otomatik kurulacak paket listesi ve gerçek
+        # kurulu paket kontrolü. Özellikle Arch Vulkan için vulkan-headers
+        # eksikse kontrol başarısız sayılır ve kurulum butonu açık kalır.
         pkgs = spec.get("pkgs", {}).get(pm) if pm else None
+        missing_packages = []
+        if pkgs and pm:
+            missing_packages = [
+                package for package in pkgs
+                if not is_package_installed(pm, package)]
+            if missing_packages:
+                missing = True
         if pkgs:
-            self.pkgs_label.setText(
-                f"{self._tr('llm_pkgs_label', 'Paketler:')} {' '.join(pkgs)}")
+            package_text = (
+                f"{self._tr('llm_pkgs_label', 'Paketler:')} "
+                f"{' '.join(pkgs)}")
+            if missing_packages:
+                package_text += (
+                    f"\n{self._tr('llm_missing_pkgs', 'Eksik paketler:')} "
+                    f"{' '.join(missing_packages)}")
+            self.pkgs_label.setText(package_text)
         else:
             self.pkgs_label.setText("")
-        # Buton: herhangi bir araç eksikse (SDK dahil) aktif; pm yoksa pasif
+        # Herhangi bir araç veya paket eksikse aktif; paket yöneticisi yoksa pasif.
         self.dep_install_btn.setEnabled(bool(missing and pm is not None))
         self._update_cuda_warning()
         self._update_rocm_warning()
