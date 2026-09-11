@@ -201,7 +201,14 @@
     "llm_build_start": "Derlemeyi Başlat",
     "llm_stop": "Durdur",
     "llm_prebuilt_group": "Hazır İkili İndir (Option B)",
-    "llm_prebuilt_start": "İndir ve Kur"
+    "llm_prebuilt_start": "İndir ve Kur",
+    "llm_sdk_missing": "SDK Bulunamadı",
+    "llm_pkgs_label": "Paketler:",
+    "llm_clean_build": "🧹 Eski CMake build önbelleği temizlendi:",
+    "llm_sdk_dialog_title": "SDK Eksik",
+    "llm_sdk_dialog_msg": "{backend} backend'i için gerekli SDK/derleyici ({sdk}) sistemde bulunamadı. SDK paketleri çok büyük olduğu için otomatik kurulmaz. Lütfen ilgili SDK'yı manuel kurun veya Option B (Hazır İkili İndir) seçeneğini kullanın.",
+    "llm_build_warn_title": "Derleme Uyarısı",
+    "llm_build_warn_msg": "Seçili backend için gerekli SDK ({sdk}) bulunamadı — derleme muhtemelen başarısız olacak. Yine de devam edilsin mi?"
   },
   "en": {
     "config_language": "Language",
@@ -405,6 +412,13 @@
     "llm_build_start": "Start Build",
     "llm_stop": "Stop",
     "llm_prebuilt_group": "Download Pre-built Binary (Option B)",
-    "llm_prebuilt_start": "Download & Install"
+    "llm_prebuilt_start": "Download & Install",
+    "llm_sdk_missing": "SDK not found",
+    "llm_pkgs_label": "Packages:",
+    "llm_clean_build": "🧹 Old CMake build cache removed:",
+    "llm_sdk_dialog_title": "Missing SDK",
+    "llm_sdk_dialog_msg": "The SDK/compiler required for the {backend} backend ({sdk}) was not found on this system. SDK packages are very large and are not installed automatically. Please install the SDK manually or use Option B (Download Pre-built Binary).",
+    "llm_build_warn_title": "Build Warning",
+    "llm_build_warn_msg": "The required SDK ({sdk}) for the selected backend was not found — the build will most likely fail. Continue anyway?"
   }
 }
