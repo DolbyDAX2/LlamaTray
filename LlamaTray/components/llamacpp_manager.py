@@ -11,6 +11,7 @@ Kullanıcının llama-server'ı kolayca derleyip kurmasını sağlayan dialog:
     (~/.local/bin/llama-server symlink/copy; ~/llama.cpp/build/bin)
 """
 
+import json
 import os
 import re
 import shutil
@@ -32,6 +33,9 @@ BUILD_ROOT = os.path.expanduser("~/llama.cpp")
 BUILD_BIN_DIR = os.path.join(BUILD_ROOT, "build", "bin")
 LOCAL_BIN_DIR = os.path.expanduser("~/.local/bin")
 BIN_NAME = "llama-server"
+LLAMATRAY_CONFIG_DIR = os.path.expanduser("~/.llamatray")
+LLAMACPP_METADATA_PATH = os.path.join(
+    LLAMATRAY_CONFIG_DIR, "llamacpp_install.json")
 
 # backend key -> (UI etiketi, cmake flag'leri)
 BACKENDS = {
@@ -749,6 +753,8 @@ class LlamaCppManagerDialog(QDialog):
         self._scan_worker = None
         self._rocm_apt_notice_logged = False
         self._cuda_apt_notice_logged = False
+        self._installed_release_tag = self._load_installed_release_tag()
+        self._pending_release_tag = None
         self._build_tools = {}
         self._pm = detect_package_manager()
 
@@ -820,8 +826,10 @@ class LlamaCppManagerDialog(QDialog):
         self.stop_btn.clicked.connect(self.stop_all)
         self.stop_btn.setEnabled(False)
         self.git_version_label = QLabel("—")
+        if self._installed_release_tag:
+            self.git_version_label.setText(f"📌 {self._installed_release_tag}")
         self.git_version_label.setToolTip(
-            "llama.cpp kaynak sürümü (git describe --tags --always)")
+            "llama.cpp kaynak sürümü veya GitHub release tag'i")
         build_layout.addWidget(self.build_start_btn)
         build_layout.addWidget(self.stop_btn)
         build_layout.addWidget(self.git_version_label)
@@ -911,6 +919,41 @@ class LlamaCppManagerDialog(QDialog):
 
     def _tr(self, key, default):
         return self._translations(key, default)
+
+    def _load_installed_release_tag(self):
+        """Daha önce başarılı kurulan llama.cpp release tag'ini oku."""
+        try:
+            with open(LLAMACPP_METADATA_PATH, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            tag = str(data.get("release_tag") or "").strip()
+            return tag or None
+        except (OSError, ValueError, TypeError):
+            return None
+
+    def _save_installed_release_tag(self, tag):
+        """Başarılı kurulumun release tag'ini atomik olarak sakla."""
+        tag = str(tag or "").strip()
+        if not tag:
+            return
+        try:
+            os.makedirs(LLAMATRAY_CONFIG_DIR, exist_ok=True)
+            temporary = LLAMACPP_METADATA_PATH + ".tmp"
+            with open(temporary, "w", encoding="utf-8") as handle:
+                json.dump({"release_tag": tag}, handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+            os.replace(temporary, LLAMACPP_METADATA_PATH)
+            self._installed_release_tag = tag
+        except OSError as exc:
+            self._append_log(f"⚠ llama.cpp sürüm bilgisi kaydedilemedi: {exc}")
+
+    def _clear_installed_release_tag(self):
+        try:
+            if os.path.lexists(LLAMACPP_METADATA_PATH):
+                os.remove(LLAMACPP_METADATA_PATH)
+        except OSError as exc:
+            self._append_log(f"⚠ llama.cpp sürüm metadata'sı silinemedi: {exc}")
+        self._installed_release_tag = None
+        self._pending_release_tag = None
 
     def _append_log(self, text):
         self.log_view.appendPlainText(text)
@@ -1224,6 +1267,7 @@ class LlamaCppManagerDialog(QDialog):
             self._append_log("⚠ Uyarı: cmake/git/derleyici eksik olabilir; "
                              "önce 'Eksikleri Yükle' butonunu deneyin.")
         # Clean build: eski CMake önbelleği yeni flag setiyle bozulmasın
+        self._pending_release_tag = None
         self._clean_build_dir()
         self.progress_bar.setValue(0)
         self._set_busy(True, kind="build")
@@ -1238,6 +1282,8 @@ class LlamaCppManagerDialog(QDialog):
     def on_build_finished(self, ok, path):
         self._set_busy(False, kind="build")
         if ok:
+            if self._pending_release_tag:
+                self._save_installed_release_tag(self._pending_release_tag)
             msg = f"✓ llama-server kuruldu: {path}"
             self._append_log(msg)
             if self._log_func:
@@ -1275,7 +1321,7 @@ class LlamaCppManagerDialog(QDialog):
                 pass
 
         binary_path = os.path.join(LOCAL_BIN_DIR, BIN_NAME)
-        targets = [BUILD_ROOT, binary_path]
+        targets = [BUILD_ROOT, binary_path, LLAMACPP_METADATA_PATH]
         existing = [path for path in targets
                     if os.path.lexists(path) or os.path.isdir(path)]
         if not existing:
@@ -1306,6 +1352,7 @@ class LlamaCppManagerDialog(QDialog):
             except Exception as exc:
                 errors.append(f"{path}: {exc}")
 
+        self._clear_installed_release_tag()
         self.git_version_label.setText("—")
         self.progress_bar.setValue(0)
         if removed:
@@ -1320,8 +1367,10 @@ class LlamaCppManagerDialog(QDialog):
         if self._prebuilt_worker is not None and self._prebuilt_worker.isRunning():
             return
         self.progress_bar.setValue(0)
+        self._pending_release_tag = None
         self._set_busy(True, kind="prebuilt")
-        self.git_version_label.setText("—")
+        self.git_version_label.setText(
+            f"📌 {self._installed_release_tag}" if self._installed_release_tag else "—")
         self._prebuilt_worker = PrebuiltWorker(self)
         self._prebuilt_worker.log_line.connect(self._append_log)
         self._prebuilt_worker.progress.connect(self.progress_bar.setValue)
@@ -1330,7 +1379,8 @@ class LlamaCppManagerDialog(QDialog):
         self._prebuilt_worker.start()
 
     def on_release_detected(self, tag):
-        """Option B için GitHub release tag'ini göster; commit hash kullanma."""
+        """GitHub release tag'ini geçici göster; başarılı kurulumda kalıcılaştır."""
+        self._pending_release_tag = str(tag or "").strip() or None
         self.git_version_label.setText(f"📌 {tag}")
         self._append_log(self._tr(
             "llm_release_tag", "📌 llama.cpp GitHub release etiketi: {tag}")
@@ -1339,6 +1389,8 @@ class LlamaCppManagerDialog(QDialog):
     def on_prebuilt_finished(self, ok, path):
         self._set_busy(False, kind="prebuilt")
         if ok:
+            if self._pending_release_tag:
+                self._save_installed_release_tag(self._pending_release_tag)
             msg = f"✓ llama-server (hazır ikili) kuruldu: {path}"
             self._append_log(msg)
             if self._log_func:
