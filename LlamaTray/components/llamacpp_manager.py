@@ -14,6 +14,7 @@ Kullanıcının llama-server'ı kolayca derleyip kurmasını sağlayan dialog:
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tarfile
@@ -32,6 +33,7 @@ RELEASES_API_URL = "https://api.github.com/repos/ggerganov/llama.cpp/releases"
 BUILD_ROOT = os.path.expanduser("~/llama.cpp")
 BUILD_BIN_DIR = os.path.join(BUILD_ROOT, "build", "bin")
 LOCAL_BIN_DIR = os.path.expanduser("~/.local/bin")
+PREBUILT_INSTALL_DIR = os.path.expanduser("~/.local/lib/llamatray/llama.cpp")
 BIN_NAME = "llama-server"
 LLAMATRAY_CONFIG_DIR = os.path.expanduser("~/.llamatray")
 LLAMACPP_METADATA_PATH = os.path.join(
@@ -622,29 +624,28 @@ class PrebuiltWorker(QThread):
                 self.finished_install.emit(False, "")
                 return
 
-            # Çıkar
+            # Çıkar: arşivi ayrı klasöre aç; binary ile birlikte .so runtime
+            # kütüphanelerini de koru.
             self.log_line.emit("📦 Arşiv çıkarılıyor...")
-            extracted_bin = self._extract(dest, tmpdir)
+            extract_dir = os.path.join(tmpdir, "extracted")
+            os.makedirs(extract_dir, exist_ok=True)
+            extracted_bin = self._extract(dest, extract_dir)
             if extracted_bin is None:
                 self.log_line.emit("❌ Arşivin içinde llama-server bulunamadı.")
                 self.finished_install.emit(False, "")
                 return
 
-            # ~/.local/bin'e kur
             try:
-                os.makedirs(LOCAL_BIN_DIR, exist_ok=True)
-                dst = os.path.join(LOCAL_BIN_DIR, BIN_NAME)
-                if os.path.lexists(dst):
-                    os.remove(dst)
-                shutil.copy2(extracted_bin, dst)
-                os.chmod(dst, 0o755)
+                dst = self._install_runtime(extracted_bin, extract_dir)
             except Exception as e:
-                self.log_line.emit(f"❌ ~/.local/bin'e kopyalama hatası: {e}")
+                self.log_line.emit(
+                    f"❌ Runtime kütüphaneleriyle birlikte kurulum hatası: {e}")
                 self.finished_install.emit(False, "")
                 return
 
             self.progress.emit(100)
-            self.log_line.emit(f"✓ Hazır binary kuruldu: {dst}")
+            self.log_line.emit(
+                f"✓ Hazır binary ve runtime kütüphaneleri kuruldu: {dst}")
             self.finished_install.emit(True, dst)
         except Exception as e:
             self.log_line.emit(f"❌ İndirme/kurulum hatası: {type(e).__name__}: {e}")
@@ -652,6 +653,51 @@ class PrebuiltWorker(QThread):
         finally:
             if tmpdir:
                 shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def _install_runtime(self, extracted_bin, extract_dir):
+        """Binary + .so dosyalarını özel runtime dizinine kur ve launcher yaz."""
+        relative = os.path.relpath(extracted_bin, extract_dir)
+        if relative == os.pardir or relative.startswith(os.pardir + os.sep):
+            source_root = os.path.dirname(extracted_bin)
+            relative = os.path.basename(extracted_bin)
+        else:
+            first = relative.split(os.sep, 1)[0]
+            candidate_root = os.path.join(extract_dir, first)
+            source_root = candidate_root if os.path.isdir(candidate_root) else extract_dir
+            relative = os.path.relpath(extracted_bin, source_root)
+
+        if os.path.lexists(PREBUILT_INSTALL_DIR):
+            if os.path.isdir(PREBUILT_INSTALL_DIR) and not os.path.islink(PREBUILT_INSTALL_DIR):
+                shutil.rmtree(PREBUILT_INSTALL_DIR)
+            else:
+                os.remove(PREBUILT_INSTALL_DIR)
+        os.makedirs(os.path.dirname(PREBUILT_INSTALL_DIR), exist_ok=True)
+        shutil.copytree(source_root, PREBUILT_INSTALL_DIR)
+
+        runtime_bin = os.path.normpath(os.path.join(PREBUILT_INSTALL_DIR, relative))
+        if not (os.path.exists(runtime_bin) and os.access(runtime_bin, os.X_OK)):
+            raise FileNotFoundError(f"Kurulan binary bulunamadı: {runtime_bin}")
+
+        # Binary'nin bulunduğu klasör ve tüm shared-library klasörleri runtime
+        # arama yoluna eklenir; release arşivlerinin farklı dizin yapıları desteklenir.
+        lib_dirs = {os.path.dirname(runtime_bin)}
+        for root, _dirs, files in os.walk(PREBUILT_INSTALL_DIR):
+            if any(".so" in name for name in files):
+                lib_dirs.add(root)
+        library_path = ":".join(sorted(lib_dirs))
+
+        os.makedirs(LOCAL_BIN_DIR, exist_ok=True)
+        launcher = os.path.join(LOCAL_BIN_DIR, BIN_NAME)
+        if os.path.lexists(launcher):
+            os.remove(launcher)
+        with open(launcher, "w", encoding="utf-8") as handle:
+            handle.write(
+                "#!/bin/sh\n"
+                f"export LD_LIBRARY_PATH={shlex.quote(library_path)}"
+                "${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\n"
+                f"exec {shlex.quote(runtime_bin)} \"$@\"\n")
+        os.chmod(launcher, 0o755)
+        return launcher
 
     def _extract(self, archive_path, dest_dir):
         """Arşivi aç ve içindeki llama-server binary'sinin yolunu döndür."""
@@ -1341,7 +1387,8 @@ class LlamaCppManagerDialog(QDialog):
                 pass
 
         binary_path = os.path.join(LOCAL_BIN_DIR, BIN_NAME)
-        targets = [BUILD_ROOT, binary_path, LLAMACPP_METADATA_PATH]
+        targets = [BUILD_ROOT, PREBUILT_INSTALL_DIR, binary_path,
+                   LLAMACPP_METADATA_PATH]
         existing = [path for path in targets
                     if os.path.lexists(path) or os.path.isdir(path)]
         if not existing:
