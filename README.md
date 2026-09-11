@@ -29,7 +29,7 @@ LlamaTray is a lightweight and stable PyQt6-based **Llama.cpp (llama-server)** m
 
 - Cross-platform installation fixes for Ubuntu (GNOME/XFCE/MATE) and Fedora (Wayland/X11): the installer now adds `~/.local/bin` to your PATH using shell-native syntax (bash/zsh/fish aware, with config-file scanning fallback), installs missing Qt6/XCB runtime libraries on Apt-based systems, and registers the app icon and `.desktop` entry (`StartupWMClass=LlamaTray`, hicolor 256x256 icon, `gtk-update-icon-cache`).
 - Proper GNOME/Wayland dock/taskbar icon grouping via `app.setDesktopFileName("llamatray")` (without the `.desktop` extension — Qt appends it automatically).
-- Graceful system-tray fallback: if no tray protocol (StatusNotifier D-Bus) is available on modern GNOME/Wayland sessions, LlamaTray keeps running in window mode without unhandled exceptions.
+- Fedora GNOME tray support: the installer installs and enables `gnome-shell-extension-appindicator` when GNOME is detected; LlamaTray also retries tray registration briefly if the StatusNotifier watcher starts late. If no tray protocol is available, it keeps running in window mode with an actionable message.
 - New **"Minimize to Tray on Close"** setting: the close button hides the window into the system tray while the server keeps running. The tray menu gains a Quit action, and single/double-clicking the tray icon restores the window.
 - Tray recovery for MATE/XFCE/X11: clicking the tray icon always restores the window with a proper state reset (`WindowMinimized` cleared, `WindowActive` set, then `show()`/`raise_()`/`activateWindow()`), and the tray context menu now always starts with a **Show / Hide** item so the window can be recovered even on desktops that swallow left-click events.
 - Graceful terminal signal handling: `Ctrl+C` (SIGINT) now quits the app cleanly via a registered signal handler plus a 500 ms yield timer — no unhandled `KeyboardInterrupt` stack traces.
@@ -95,7 +95,7 @@ chmod +x install.sh
 llamatray
 ```
 
-The installer automatically detects Fedora and installs `python3` via `dnf` if needed.
+The installer automatically detects Fedora and installs `python3` via `dnf` if needed. On GNOME sessions it also installs/enables `gnome-shell-extension-appindicator`, which is required for Qt tray icons; log out and back in once if GNOME does not show the icon immediately.
 
 #### Uninstall
 
@@ -258,7 +258,7 @@ LlamaTray, Linux (özellikle Arch Linux / CachyOS) için geliştirilmiş, PyQt6 
 
 - Ubuntu (GNOME/XFCE/MATE) ve Fedora (Wayland/X11) için çapraz platform kurulum düzeltmeleri: kurulum betiği artık `~/.local/bin` yolunu kabuğunuza özgü sözdizimiyle PATH'e ekler (bash/zsh/fish destekli, yapılandırma dosyası tarama yedeği ile), Apt tabanlı sistemlerde eksik Qt6/XCB çalışma zamanı kütüphanelerini kurar ve uygulama simgesini + `.desktop` girişini (`StartupWMClass=LlamaTray`, hicolor 256x256 simge, `gtk-update-icon-cache`) kaydeder.
 - `app.setDesktopFileName("llamatray")` ile GNOME/Wayland dock/görev çubuğu ikon gruplaması (`.desktop` uzantısı olmadan — Qt onu otomatik ekler).
-- Zarif sistem tepsisi yedeği: modern GNOME/Wayland oturumlarında tray protokolü (StatusNotifier D-Bus) yoksa LlamaTray ele alınmamış istisna fırlatmaksızın pencere modunda çalışmaya devam eder.
+- Fedora GNOME tepsi desteği: GNOME tespit edildiğinde kurulum betiği `gnome-shell-extension-appindicator` paketini kurup etkinleştirir; LlamaTray ayrıca StatusNotifier watcher geç başlarsa tepsi kaydını kısa süre yeniden dener. Tepsi protokolü yoksa uygulama yönlendirici bir mesajla pencere modunda çalışmaya devam eder.
 - Yeni **"Kapatırken Tepside Minimize Et"** ayarı: kapatma butonu pencereyi sistem tepisine gizler, sunucu çalışmaya devam eder. Tepsi menüsüne Çıkış eylemi eklendi; tepsinin tek/tıklanması pencereyi geri açar.
 - MATE/XFCE/X11 için tepsi geri yükleme düzeltmesi: tepsi simgesine tıklamak her zaman pencereyi uygun durum sıfırlamasıyla geri getirir (`WindowMinimized` temizlenir, `WindowActive` ayarlanır, ardından `show()`/`raise_()`/`activateWindow()`) ve tepsi bağlam menüsünün en üstünde her zaman bir **Göster / Gizle** öğesi bulunur — sol tık olayları yutulan masaüstlerinde bile pencere geri alınabilir.
 - Zarif terminal sinyal işleme: `Ctrl+C` (SIGINT), kayıtlı sinyal handler'ı + 500 ms yield timer'ı sayesinde uygulamayı temiz şekilde kapatır — ele alınmamış `KeyboardInterrupt` traceback'i çıkmaz.
@@ -324,7 +324,7 @@ chmod +x install.sh
 llamatray
 ```
 
-Kurulum betiği Fedora'yı otomatik olarak tespit eder ve gerekirse `dnf` ile `python3` kurulumunu yapar.
+Kurulum betiği Fedora'yı otomatik olarak tespit eder ve gerekirse `dnf` ile `python3` kurulumunu yapar. GNOME oturumlarında Qt tepsi ikonları için gerekli `gnome-shell-extension-appindicator` paketini de kurup etkinleştirir; ikon hemen görünmezse GNOME oturumunu bir kez kapatıp açın.
 
 #### Kaldırma
 

@@ -214,7 +214,8 @@
     "llm_sycl_manual_msg": "Intel SYCL için gereken 'icpx' derleyicisi standart paket yöneticileriyle kurulamaz. Intel oneAPI SDK'sını manuel olarak kurmanız gerekir. Alternatif olarak Hazır İkili (Option B) kullanabilirsiniz.",
     "llm_build_desc": "llama.cpp projesini güncel kaynak kodundan sizin donanımınıza özel olarak sıfırdan derler (En yüksek performans).",
     "llm_prebuilt_desc": "Derleme adımlarıyla uğraşmadan son sürüm önceden derlenmiş hazır sunucu ikilisini doğrudan indirip kullanmanızı sağlar (En hızlı başlangıç).",
-    "llm_release_tag": "📌 llama.cpp GitHub release etiketi: {tag}"
+    "llm_release_tag": "📌 llama.cpp GitHub release etiketi: {tag}",
+    "log_tray_unavailable_gnome": "⚠ GNOME'da sistem tepsisi için AppIndicator/StatusNotifier eklentisi gerekir. Fedora'da 'sudo dnf install -y gnome-shell-extension-appindicator' çalıştırıp GNOME oturumunu kapatıp açın. Pencere modunda devam ediliyor."
   },
   "en": {
     "config_language": "Language",
@@ -431,6 +432,7 @@
     "llm_sycl_manual_msg": "The 'icpx' compiler required for Intel SYCL cannot be installed with standard package managers. You must install the Intel oneAPI SDK manually. Alternatively, you can use the Pre-built Binary (Option B).",
     "llm_build_desc": "Compiles the llama.cpp project from the latest source code, specifically for your hardware (Highest performance).",
     "llm_prebuilt_desc": "Lets you directly download and use the latest pre-built server binary without dealing with build steps (Fastest start).",
-    "llm_release_tag": "📌 llama.cpp GitHub release tag: {tag}"
+    "llm_release_tag": "📌 llama.cpp GitHub release tag: {tag}",
+    "log_tray_unavailable_gnome": "⚠ GNOME needs the AppIndicator/StatusNotifier extension for system tray support. On Fedora, run 'sudo dnf install -y gnome-shell-extension-appindicator' and log out/in of GNOME. Continuing in window mode."
   }
 }
