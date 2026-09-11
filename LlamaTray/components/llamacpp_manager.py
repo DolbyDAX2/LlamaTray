@@ -19,9 +19,10 @@ import tarfile
 import tempfile
 import zipfile
 from PyQt6.QtCore import QThread, pyqtSignal
-from PyQt6.QtWidgets import (QDialog, QGroupBox, QHBoxLayout, QLabel,
-                             QPlainTextEdit, QProgressBar, QRadioButton,
-                             QPushButton, QVBoxLayout)
+from PyQt6.QtWidgets import (QApplication, QDialog, QGroupBox, QHBoxLayout,
+                             QLabel, QMessageBox, QPlainTextEdit, QProgressBar,
+                             QRadioButton, QScrollArea, QPushButton,
+                             QVBoxLayout, QWidget)
 
 LLAMA_CPP_REPO_URL = "https://github.com/ggerganov/llama.cpp"
 RELEASES_API_URL = "https://api.github.com/repos/ggerganov/llama.cpp/releases/latest"
@@ -40,13 +41,88 @@ BACKENDS = {
 }
 BACKEND_ORDER = ["vulkan", "cuda", "rocm", "sycl", "cpu"]
 
-# package manager -> açık (group name değil) derleme paketi komutları
-DEP_SPECS = {
-    "apt": ["sudo", "apt", "install", "-y", "build-essential", "cmake", "git"],
-    "dnf": ["sudo", "dnf", "install", "-y", "gcc-c++", "make", "cmake", "git"],
-    "pacman": ["sudo", "pacman", "-S", "--needed", "base-devel", "cmake", "git"],
-    "zypper": ["sudo", "zypper", "install", "-y", "gcc-c++", "make", "cmake", "git"],
+BUILD_DIR = os.path.join(BUILD_ROOT, "build")
+
+# package manager -> install komutu şablonu (açık paket listesiyle)
+PM_INSTALL_CMD = {
+    "apt": lambda pkgs: ["sudo", "apt", "install", "-y"] + pkgs,
+    "dnf": lambda pkgs: ["sudo", "dnf", "install", "-y"] + pkgs,
+    "pacman": lambda pkgs: ["sudo", "pacman", "-S", "--needed"] + pkgs,
+    "zypper": lambda pkgs: ["sudo", "zypper", "install", "-y"] + pkgs,
 }
+
+# backend -> dinamik bağımlılık tanımları
+#   sdk_tool    : eksikse "manuel kurulum / Option B" önerilecek büyük SDK aracı
+#   extra_tools : backend'e özel ayrıca gösterilecek araçlar (SDK dahil)
+#   pkgs        : pm -> otomatik kurulacak açık paket listesi (temel + backend)
+BACKEND_DEPS = {
+    "cpu": {
+        "sdk_tool": None,
+        "extra_tools": (),
+        "pkgs": {
+            "apt": ["build-essential", "cmake", "git"],
+            "dnf": ["gcc-c++", "make", "cmake", "git"],
+            "pacman": ["base-devel", "cmake", "git"],
+            "zypper": ["gcc-c++", "make", "cmake", "git"],
+        },
+    },
+    "vulkan": {
+        "sdk_tool": None,
+        "extra_tools": ("glslc",),
+        "pkgs": {
+            "apt": ["build-essential", "cmake", "git",
+                    "libvulkan-dev", "vulkan-tools", "glslc"],
+            "dnf": ["gcc-c++", "make", "cmake", "git",
+                    "vulkan-headers", "vulkan-loader-devel", "glslc"],
+            "pacman": ["base-devel", "cmake", "git",
+                       "vulkan-devel", "shaderc"],
+            "zypper": ["gcc-c++", "make", "cmake", "git", "libvulkan-devel"],
+        },
+    },
+    "cuda": {
+        # CUDA Toolkit büyük bir SDK: eksikse otomatik kurulmaz (bilgi diyalog).
+        # nvcc mevcutken yalnızca temel derleme paketleri kurulur.
+        "sdk_tool": "nvcc",
+        "extra_tools": ("nvcc",),
+        "pkgs": {
+            "apt": ["build-essential", "cmake", "git"],
+            "dnf": ["gcc-c++", "make", "cmake", "git"],
+            "pacman": ["base-devel", "cmake", "git"],
+            "zypper": ["gcc-c++", "make", "cmake", "git"],
+        },
+    },
+    "rocm": {
+        "sdk_tool": "hipcc",
+        "extra_tools": ("hipcc",),
+        "pkgs": {
+            "apt": ["build-essential", "cmake", "git"],
+            "dnf": ["gcc-c++", "make", "cmake", "git"],
+            "pacman": ["base-devel", "cmake", "git"],
+            "zypper": ["gcc-c++", "make", "cmake", "git"],
+        },
+    },
+    "sycl": {
+        "sdk_tool": "icpx",
+        "extra_tools": ("icpx",),
+        "pkgs": {
+            "apt": ["build-essential", "cmake", "git"],
+            "dnf": ["gcc-c++", "make", "cmake", "git"],
+            "pacman": ["base-devel", "cmake", "git"],
+            "zypper": ["gcc-c++", "make", "cmake", "git"],
+        },
+    },
+}
+
+
+def cmake_flags_for(backend_key):
+    """Seçili backend'i ON, diğer tüm GPU backend'lerini açıkça OFF yap."""
+    flags = []
+    for b, (_label, fl) in BACKENDS.items():
+        if b == "cpu":
+            continue
+        name = fl[0][2:].split("=")[0]  # "-DGGML_VULKAN=ON" -> "GGML_VULKAN"
+        flags.append(f"-D{name}={'ON' if b == backend_key else 'OFF'}")
+    return flags
 
 
 def detect_package_manager():
@@ -117,7 +193,8 @@ class HardwareScanWorker(QThread):
     def run(self):
         result = {"tools": {}, "gpus": [], "vendor": None, "recommendation": "cpu"}
         tools = {}
-        for t in ("nvidia-smi", "nvcc", "rocminfo", "vulkaninfo", "clinfo", "lspci"):
+        for t in ("nvidia-smi", "nvcc", "rocminfo", "vulkaninfo", "clinfo",
+                  "lspci", "hipcc", "icpx"):
             tools[t] = shutil.which(t) is not None
         result["tools"] = tools
         vendor = None
@@ -262,7 +339,8 @@ class BuildWorker(QThread):
             return None
 
     def run(self):
-        label, flags = BACKENDS[self.backend_key]
+        label, _flags = BACKENDS[self.backend_key]
+        cfg_flags = cmake_flags_for(self.backend_key)
         try:
             # Adım 1: kaynağı klonla / güncelle
             if os.path.isdir(os.path.join(BUILD_ROOT, ".git")):
@@ -284,16 +362,16 @@ class BuildWorker(QThread):
                     self.finished_build.emit(False, "")
                     return
 
-            # Adım 2: cmake configure
-            cfg = ["cmake", "-S", BUILD_ROOT, "-B", os.path.join(BUILD_ROOT, "build"),
-                   "-DCMAKE_BUILD_TYPE=Release"] + flags
+            # Adım 2: cmake configure (seçilen backend ON, diğerleri açıkça OFF)
+            cfg = ["cmake", "-S", BUILD_ROOT, "-B", BUILD_DIR,
+                   "-DCMAKE_BUILD_TYPE=Release"] + cfg_flags
             if not self._run_step(cfg, f"Yapılandır (backend: {label})", 40):
                 self.finished_build.emit(False, "")
                 return
 
             # Adım 3: build
             jobs = str(max(1, os.cpu_count() or 2))
-            bld = ["cmake", "--build", os.path.join(BUILD_ROOT, "build"),
+            bld = ["cmake", "--build", BUILD_DIR,
                    "--target", BIN_NAME, "-j", jobs]
             if not self._run_step(bld, "Derle (llama-server)", 85):
                 self.finished_build.emit(False, "")
@@ -312,7 +390,7 @@ class BuildWorker(QThread):
                 return
             self.progress.emit(100)
             self.log_line.emit(f"✓ Kuruldu: {installed}")
-            self.log_line.emit(f"✓ Backend: {label} | Flag'ler: {' '.join(flags) or '(yok)'}")
+            self.log_line.emit(f"✓ Backend: {label} | Flag'ler: {' '.join(cfg_flags)}")
             self.finished_build.emit(True, installed)
         except Exception as e:
             self.log_line.emit(f"❌ Beklenmeyen hata: {type(e).__name__}: {e}")
@@ -516,7 +594,19 @@ class LlamaCppManagerDialog(QDialog):
         self._translations = translations_func or (lambda k, d: d)
         self._log_func = log_func
         self.setWindowTitle(self._tr("llm_title", "llama.cpp Yöneticisi / Kurucu"))
+        # Düşük dikey çözünürlüklere (< 768px) uyum: esnek minimum boyut +
+        # ekranın kullanılabilir alanına sığdırma.
+        self.setMinimumSize(600, 480)
         self.resize(780, 640)
+        try:
+            screen = QApplication.primaryScreen()
+            if screen is not None:
+                avail = screen.availableGeometry()
+                w = min(780, max(600, avail.width() - 24))
+                h = min(640, max(480, avail.height() - 24))
+                self.resize(w, h)
+        except Exception:
+            pass
 
         self._build_worker = None
         self._prebuilt_worker = None
@@ -526,6 +616,15 @@ class LlamaCppManagerDialog(QDialog):
         self._pm = detect_package_manager()
 
         layout = QVBoxLayout(self)
+
+        # Düşük çözünürlüklerde taşmayı önlemek için bölümler QScrollArea içine
+        # alınır (ilerleme çubuğu ve log sabit kalır).
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
 
         # 1) Donanım tespiti
         hw_group = QGroupBox(self._tr("llm_hardware_group", "Donanım Tespiti"))
@@ -539,7 +638,7 @@ class LlamaCppManagerDialog(QDialog):
             "border-radius: 4px;")
         hw_layout.addWidget(self.hw_status_label)
         hw_layout.addWidget(self.reco_banner)
-        layout.addWidget(hw_group)
+        content_layout.addWidget(hw_group)
 
         # 2) Backend seçimi
         backend_group = QGroupBox(self._tr("llm_backend_group", "Hedef Backend"))
@@ -548,8 +647,9 @@ class LlamaCppManagerDialog(QDialog):
         for key in BACKEND_ORDER:
             r = QRadioButton(self._tr(f"llm_backend_{key}", BACKENDS[key][0]))
             self.backend_radios[key] = r
+            r.toggled.connect(self._on_backend_changed)
             backend_layout.addWidget(r)
-        layout.addWidget(backend_group)
+        content_layout.addWidget(backend_group)
 
         # 3) Bağımlılıklar
         deps_group = QGroupBox(self._tr("llm_deps_group", "Bağımlılıklar & Derleme Araçları"))
@@ -557,6 +657,8 @@ class LlamaCppManagerDialog(QDialog):
         self.pm_label = QLabel()
         self.tools_label = QLabel()
         self.tools_label.setWordWrap(True)
+        self.pkgs_label = QLabel()
+        self.pkgs_label.setWordWrap(True)
         self.dep_check_btn = QPushButton(self._tr("llm_deps_check", "Kontrol Et"))
         self.dep_check_btn.clicked.connect(self.refresh_dep_status)
         self.dep_install_btn = QPushButton(self._tr("llm_deps_install", "Eksikleri Yükle (sudo)"))
@@ -566,8 +668,9 @@ class LlamaCppManagerDialog(QDialog):
         deps_btn_row.addWidget(self.dep_install_btn)
         deps_layout.addWidget(self.pm_label)
         deps_layout.addWidget(self.tools_label)
+        deps_layout.addWidget(self.pkgs_label)
         deps_layout.addLayout(deps_btn_row)
-        layout.addWidget(deps_group)
+        content_layout.addWidget(deps_group)
 
         # 4) Option A: kaynak derleme
         build_group = QGroupBox(self._tr("llm_build_group", "Kaynaktan Derle (Option A)"))
@@ -579,7 +682,7 @@ class LlamaCppManagerDialog(QDialog):
         self.stop_btn.setEnabled(False)
         build_layout.addWidget(self.build_start_btn)
         build_layout.addWidget(self.stop_btn)
-        layout.addWidget(build_group)
+        content_layout.addWidget(build_group)
 
         # 5) Option B: hazır ikili
         pre_group = QGroupBox(self._tr("llm_prebuilt_group", "Hazır İkili İndir (Option B)"))
@@ -587,17 +690,21 @@ class LlamaCppManagerDialog(QDialog):
         self.prebuilt_btn = QPushButton(self._tr("llm_prebuilt_start", "İndir ve Kur"))
         self.prebuilt_btn.clicked.connect(self.start_prebuilt)
         pre_layout.addWidget(self.prebuilt_btn)
-        layout.addWidget(pre_group)
+        content_layout.addWidget(pre_group)
 
-        # 6) İlerleme + log
+        scroll.setWidget(content)
+        layout.addWidget(scroll, stretch=1)
+
+        # 6) İlerleme + log (scroll alanı dışında, sabit)
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.log_view = QPlainTextEdit()
         self.log_view.setReadOnly(True)
         self.log_view.setMaximumBlockCount(2000)
+        self.log_view.setMinimumHeight(120)
         layout.addWidget(self.progress_bar)
-        layout.addWidget(self.log_view, stretch=1)
+        layout.addWidget(self.log_view)
 
         self.refresh_dep_status()
         self._append_log(self._tr("llm_intro",
@@ -657,9 +764,52 @@ class LlamaCppManagerDialog(QDialog):
         if radio is not None:
             radio.setChecked(True)
 
+        # Akıllı pasifleştirme: SDK'sı (nvcc/hipcc/icpx) bulunamayan backend'lerin
+        # radyo butonuna "(SDK Bulunamadı)" işareti ekle.
+        self._mark_missing_sdks()
+        self.refresh_dep_status()
+
     # ---------------- Bağımlılıklar ----------------
 
+    def _on_backend_changed(self, checked):
+        """Backend değiştiğinde bağımlılık listesini güncelle ve eski CMake
+        build önbelleğini temizle (clean build; karma flag setlerini önler)."""
+        if not checked:
+            return  # sadece yeni seçilen backend ile ilgilen
+        self.refresh_dep_status()
+        self._clean_build_dir()
+
+    def _clean_build_dir(self):
+        """~/llama.cpp/build dizinini sil (önbellek temizliği)."""
+        if not os.path.isdir(BUILD_DIR):
+            return
+        try:
+            shutil.rmtree(BUILD_DIR, ignore_errors=True)
+            self._append_log(self._tr("llm_clean_build",
+                                      "🧹 Eski CMake build önbelleği temizlendi:")
+                             + f" {BUILD_DIR}")
+        except Exception as e:
+            self._append_log(f"⚠ Build dizini temizlenemedi: {e}")
+
+    def _mark_missing_sdks(self):
+        """SDK'sı (nvcc/hipcc/icpx) bulunamayan backend radyolarını işaretle."""
+        for key, spec in BACKEND_DEPS.items():
+            sdk = spec.get("sdk_tool")
+            if not sdk:
+                continue
+            radio = self.backend_radios.get(key)
+            if radio is None:
+                continue
+            base = self._tr(f"llm_backend_{key}", BACKENDS[key][0])
+            if not shutil.which(sdk):
+                suffix = f" ({self._tr('llm_sdk_missing', 'SDK Bulunamadı')})"
+                if not radio.text().endswith(suffix):
+                    radio.setText(base + suffix)
+
     def refresh_dep_status(self):
+        """Seçili backend'e göre bağımlılık durumunu dinamik göster."""
+        backend = self.selected_backend() or "cpu"
+        spec = BACKEND_DEPS.get(backend, BACKEND_DEPS["cpu"])
         tools = check_build_tools()
         self._build_tools = tools
         pm = detect_package_manager()
@@ -672,19 +822,58 @@ class LlamaCppManagerDialog(QDialog):
                  for t in ("cmake", "git", "g++", "clang", "make")]
         lines.append(f"{'✓' if ok_compiler else '✗'} " +
                      self._tr("llm_compiler_ok", "derleyici (g++ veya clang)"))
-        self.tools_label.setText("\n".join(lines))
+        # Backend'e özel araçlar / SDK
         missing = not (tools.get("cmake") and tools.get("git") and ok_compiler)
+        for t in spec.get("extra_tools", ()):
+            mark = shutil.which(t)
+            suffix = ""
+            if not mark and spec.get("sdk_tool") == t:
+                suffix = f" ({self._tr('llm_sdk_missing', 'SDK Bulunamadı')})"
+            lines.append(f"{'✓' if mark else '✗'} {t}{suffix}")
+            if not mark:
+                missing = True
+        self.tools_label.setText("\n".join(lines))
+        # Bu backend + pm için otomatik kurulacak paket listesi
+        pkgs = spec.get("pkgs", {}).get(pm) if pm else None
+        if pkgs:
+            self.pkgs_label.setText(
+                f"{self._tr('llm_pkgs_label', 'Paketler:')} {' '.join(pkgs)}")
+        else:
+            self.pkgs_label.setText("")
+        # Buton: herhangi bir araç eksikse (SDK dahil) aktif; pm yoksa pasif
         self.dep_install_btn.setEnabled(bool(missing and pm is not None))
 
     def install_missing_deps(self):
         if self._dep_worker is not None and self._dep_worker.isRunning():
             return
-        if not self._pm:
+        backend = self.selected_backend() or "cpu"
+        spec = BACKEND_DEPS.get(backend, BACKEND_DEPS["cpu"])
+        sdk = spec.get("sdk_tool")
+        # CUDA/ROCm/SYCL: büyük SDK eksikse otomatik kurma — bilgilendir.
+        if sdk and not shutil.which(sdk):
+            QMessageBox.information(
+                self,
+                self._tr("llm_sdk_dialog_title", "SDK Eksik"),
+                self._tr("llm_sdk_dialog_msg",
+                         "{backend} backend'i için gerekli SDK/derleyici ({sdk}) "
+                         "sistemde bulunamadı. SDK paketleri çok büyük olduğu "
+                         "için otomatik kurulmaz. Lütfen ilgili SDK'yı manuel "
+                         "kurun veya Option B (Hazır İkili İndir) seçeneğini "
+                         "kullanın.")
+                .format(backend=self._tr(f"llm_backend_{backend}", backend.upper()),
+                        sdk=sdk))
+            return
+        pm = detect_package_manager()
+        self._pm = pm
+        if not pm:
             self._append_log("⚠ Bilinen bir paket yöneticisi bulunamadı "
                              "(apt/dnf/pacman/zypper).")
             return
-        cmd = DEP_SPECS.get(self._pm)
+        pkgs = spec.get("pkgs", {}).get(pm)
+        cmd = PM_INSTALL_CMD[pm](pkgs) if pkgs else None
         if not cmd:
+            self._append_log(f"⚠ '{pm}' için bu backend'in paket listesi "
+                             f"tanımlı değil.")
             return
         self.dep_install_btn.setEnabled(False)
         self._dep_worker = DepInstallWorker(cmd, self)
@@ -709,11 +898,26 @@ class LlamaCppManagerDialog(QDialog):
         if backend is None:
             self._append_log("⚠ Lütfen bir backend seçin.")
             return
+        spec = BACKEND_DEPS.get(backend, BACKEND_DEPS["cpu"])
+        sdk = spec.get("sdk_tool")
+        # Pre-flight: SDK eksikse uyar (başarısız derleme döngülerini engelle)
+        if sdk and not shutil.which(sdk):
+            resp = QMessageBox.question(
+                self,
+                self._tr("llm_build_warn_title", "Derleme Uyarısı"),
+                self._tr("llm_build_warn_msg",
+                          "Seçili backend için gerekli SDK ({sdk}) bulunamadı — "
+                          "derleme muhtemelen başarısız olacak. Yine de devam "
+                          "edilsin mi?").format(sdk=sdk))
+            if resp != QMessageBox.StandardButton.Yes:
+                return
         tools = check_build_tools()
         ok_compiler = bool(tools.get("g++") or tools.get("clang"))
         if not (tools.get("cmake") and tools.get("git") and ok_compiler):
             self._append_log("⚠ Uyarı: cmake/git/derleyici eksik olabilir; "
                              "önce 'Eksikleri Yükle' butonunu deneyin.")
+        # Clean build: eski CMake önbelleği yeni flag setiyle bozulmasın
+        self._clean_build_dir()
         self.progress_bar.setValue(0)
         self._set_busy(True, kind="build")
         self._build_worker = BuildWorker(backend, self)
