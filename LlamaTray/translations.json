@@ -215,7 +215,8 @@
     "llm_build_desc": "llama.cpp projesini güncel kaynak kodundan sizin donanımınıza özel olarak sıfırdan derler (En yüksek performans).",
     "llm_prebuilt_desc": "Derleme adımlarıyla uğraşmadan son sürüm önceden derlenmiş hazır sunucu ikilisini doğrudan indirip kullanmanızı sağlar (En hızlı başlangıç).",
     "llm_release_tag": "📌 llama.cpp GitHub release etiketi: {tag}",
-    "log_tray_unavailable_gnome": "⚠ GNOME'da sistem tepsisi için AppIndicator/StatusNotifier eklentisi gerekir. Fedora'da 'sudo dnf install -y gnome-shell-extension-appindicator' çalıştırıp GNOME oturumunu kapatıp açın. Pencere modunda devam ediliyor."
+    "log_tray_unavailable_gnome": "⚠ GNOME'da sistem tepsisi için AppIndicator/StatusNotifier eklentisi gerekir. Fedora'da 'sudo dnf install -y gnome-shell-extension-appindicator' çalıştırıp GNOME oturumunu kapatıp açın. Pencere modunda devam ediliyor.",
+    "llm_rocm_apt_repo_note": "Not: Ubuntu/Debian üzerinde AMD ROCm kullanabilmek için öncelikle AMD'nin resmi ROCm APT deposunu (repo.radeon.com) sisteminize eklemeniz gerekmektedir. Standart Ubuntu depolarında bu paketler yer almaz."
   },
   "en": {
     "config_language": "Language",
@@ -433,6 +434,7 @@
     "llm_build_desc": "Compiles the llama.cpp project from the latest source code, specifically for your hardware (Highest performance).",
     "llm_prebuilt_desc": "Lets you directly download and use the latest pre-built server binary without dealing with build steps (Fastest start).",
     "llm_release_tag": "📌 llama.cpp GitHub release tag: {tag}",
-    "log_tray_unavailable_gnome": "⚠ GNOME needs the AppIndicator/StatusNotifier extension for system tray support. On Fedora, run 'sudo dnf install -y gnome-shell-extension-appindicator' and log out/in of GNOME. Continuing in window mode."
+    "log_tray_unavailable_gnome": "⚠ GNOME needs the AppIndicator/StatusNotifier extension for system tray support. On Fedora, run 'sudo dnf install -y gnome-shell-extension-appindicator' and log out/in of GNOME. Continuing in window mode.",
+    "llm_rocm_apt_repo_note": "Note: To use AMD ROCm on Ubuntu/Debian, you must first add AMD's official ROCm APT repository (repo.radeon.com) to your system. These packages are not available in the standard Ubuntu repositories."
   }
 }

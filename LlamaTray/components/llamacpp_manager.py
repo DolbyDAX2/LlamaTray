@@ -107,8 +107,9 @@ BACKEND_DEPS = {
         "sdk_tool": "hipcc",
         "extra_tools": ("hipcc",),
         "pkgs": {
-            "apt": ["build-essential", "cmake", "git",
-                    "rocm-hip-sdk", "hipcc", "rocminfo"],
+            # Ubuntu/Debian standart depolarında ROCm paketleri yoktur;
+            # repo.radeon.com eklenmeden otomatik apt kurulumu yapılmaz.
+            "apt": [],
             "dnf": ["gcc-c++", "make", "cmake", "git",
                     "rocm-hip-devel", "rocminfo"],
             "pacman": ["base-devel", "cmake", "git",
@@ -700,6 +701,7 @@ class LlamaCppManagerDialog(QDialog):
         self._prebuilt_worker = None
         self._dep_worker = None
         self._scan_worker = None
+        self._rocm_apt_notice_logged = False
         self._build_tools = {}
         self._pm = detect_package_manager()
 
@@ -813,6 +815,13 @@ class LlamaCppManagerDialog(QDialog):
             "border: 1px solid #ffb27a; border-radius: 4px; padding: 6px;")
         self.sycl_warning_label.hide()
         layout.addWidget(self.sycl_warning_label)
+        self.rocm_warning_label = QLabel()
+        self.rocm_warning_label.setWordWrap(True)
+        self.rocm_warning_label.setStyleSheet(
+            "color: #8a5a00; background: #fff3e0;"
+            "border: 1px solid #ffb27a; border-radius: 4px; padding: 6px;")
+        self.rocm_warning_label.hide()
+        layout.addWidget(self.rocm_warning_label)
 
         # 6) İlerleme + log (scroll alanı dışında, sabit; canlı & kopyalanabilir)
         self.progress_bar = QProgressBar()
@@ -946,6 +955,27 @@ class LlamaCppManagerDialog(QDialog):
                 if not radio.text().endswith(suffix):
                     radio.setText(base + suffix)
 
+    def _rocm_apt_note(self):
+        return self._tr(
+            "llm_rocm_apt_repo_note",
+            "Not: Ubuntu/Debian üzerinde AMD ROCm kullanabilmek için öncelikle "
+            "AMD'nin resmi ROCm APT deposunu (repo.radeon.com) sisteminize "
+            "eklemeniz gerekmektedir. Standart Ubuntu depolarında bu paketler "
+            "yer almaz.")
+
+    def _update_rocm_warning(self):
+        """ROCm + apt seçiliyse resmi AMD deposu uyarısını göster ve logla."""
+        backend = self.selected_backend()
+        show = (backend == "rocm" and self._pm == "apt")
+        note = self._rocm_apt_note()
+        self.rocm_warning_label.setText(note)
+        self.rocm_warning_label.setVisible(show)
+        if show and not self._rocm_apt_notice_logged:
+            self._append_log(note)
+            self._rocm_apt_notice_logged = True
+        elif not show:
+            self._rocm_apt_notice_logged = False
+
     def _update_sycl_warning(self):
         """Intel SYCL seçili ve icpx yoksa manuel kurulum uyarısını göster."""
         backend = self.selected_backend()
@@ -994,6 +1024,7 @@ class LlamaCppManagerDialog(QDialog):
             self.pkgs_label.setText("")
         # Buton: herhangi bir araç eksikse (SDK dahil) aktif; pm yoksa pasif
         self.dep_install_btn.setEnabled(bool(missing and pm is not None))
+        self._update_rocm_warning()
         self._update_sycl_warning()
 
     def install_missing_deps(self):
@@ -1002,6 +1033,13 @@ class LlamaCppManagerDialog(QDialog):
             return
         backend = self.selected_backend() or "cpu"
         spec = BACKEND_DEPS.get(backend, BACKEND_DEPS["cpu"])
+        pm = detect_package_manager()
+        self._pm = pm
+        # Ubuntu/Debian ROCm: resmi repo eklenmeden apt paket denemesi yapma.
+        if backend == "rocm" and pm == "apt":
+            self._update_rocm_warning()
+            self._append_log(self._rocm_apt_note())
+            return
         # Intel SYCL: icpx paket yöneticisiyle kurulamaz → otomatik kurma, yönlendir
         if backend == "sycl" and not shutil.which("icpx"):
             self._update_sycl_warning()
@@ -1011,8 +1049,6 @@ class LlamaCppManagerDialog(QDialog):
                                       "olarak kurmanız gerekir. Alternatif olarak Hazır İkili "
                                       "(Option B) kullanabilirsiniz."))
             return
-        pm = detect_package_manager()
-        self._pm = pm
         if not pm:
             self._append_log("⚠ Bilinen bir paket yöneticisi bulunamadı "
                              "(apt/dnf/pacman/zypper).")
