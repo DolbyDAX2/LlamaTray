@@ -5,8 +5,8 @@ import os
 import requests
 from PyQt6.QtCore import QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
-    QCheckBox, QFileDialog, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+    QCheckBox, QFileDialog, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
+    QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
 
@@ -113,12 +113,29 @@ class RouterSettingsWidget(QGroupBox):
         self.models_tree = QTreeWidget()
         self.models_tree.setRootIsDecorated(False)
         self.models_tree.setMinimumHeight(130)
+        self.models_tree.setUniformRowHeights(True)
+        self._apply_column_modes()
         layout.addWidget(self.models_tree)
+        # Durum etiketi (örn. "1 Model Bulundu") tablonun altındaki KENDİ
+        # QHBoxLayout'ında tutulur; hücre içi item widget'larından ayrılır ve
+        # böylece metin tablo içeriklerinin üstüne binmez.
         self.status_label = QLabel()
-        layout.addWidget(self.status_label)
+        status_row = QHBoxLayout()
+        status_row.addWidget(self.status_label)
+        status_row.addStretch()
+        layout.addLayout(status_row)
         self.models_tree.setEnabled(False)
         self.refresh_button.setEnabled(False)
         self.update_labels()
+
+    def _apply_column_modes(self):
+        """Dinamik sütun yeniden boyutlandırma: düşük çözünürlüklerde sütunlar
+        içeriğe göre uzayıp daralar, hücreler üst üste binmez.
+        setHeaderLabels() modları sıfırladığı için update_labels'tan da çağrılır."""
+        header = self.models_tree.header()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)             # Model adı
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)    # Durum
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)             # İşlemler
 
     def browse_models_dir(self):
         path = QFileDialog.getExistingDirectory(
@@ -241,3 +258,5 @@ class RouterSettingsWidget(QGroupBox):
         self.models_tree.setHeaderLabels([
             self.tr("router_model", "Model"), self.tr("router_status", "Durum"),
             self.tr("router_actions", "İşlemler")])
+        # setHeaderLabels() sütun yeniden boyutlandırma modlarını sıfırlar; tekrar uygula.
+        self._apply_column_modes()
