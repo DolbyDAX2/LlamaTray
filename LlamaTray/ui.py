@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QApplication, QSystemTrayIcon, QFileDialog, QMessageBox, QMainWindow,
     QTextEdit, QVBoxLayout, QHBoxLayout, QComboBox, QWidget, QDialog,
     QMenu, QPushButton, QInputDialog, QDialogButtonBox, QTabWidget,
-    QGroupBox, QRadioButton, QLineEdit
+    QGroupBox, QRadioButton, QLineEdit, QScrollArea, QCheckBox
 )
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import QTimer
@@ -37,6 +37,7 @@ class LlamaTray:
         # 1. Tüm temel özellikleri ve widget'ları önce belleğe al
         self.model_path = ""
         self.timer = QTimer()
+        self._force_quit = False  # True: kapatma isteği minimize-to-tray'i atlar
         self.log = lambda msg: print(msg)  # Geçici log (log_window henüz yok)
         self.server_manager = LlamaServerManager(log_callback=self.log)
         self.system_monitor = SystemMonitor()
@@ -74,26 +75,92 @@ class LlamaTray:
         except Exception: pass
 
     def _init_tray_icon(self):
-        self.tray_icon = QSystemTrayIcon()
-        ip = get_icon_path()
-        if os.path.exists(ip): self.tray_icon.setIcon(QIcon(ip))
-        self.tray_icon.setVisible(True)
-        self.menu = QMenu()
-        tr = self.get_translated
-        self.browse_action = QAction(tr("menu_browse", "Göz At"))
-        self.browse_action.triggered.connect(self.browse_file)
-        self.menu.addAction(self.browse_action)
-        self.start_server_action = QAction(tr("menu_start_server", "Sunucuyu Başlat"))
-        self.start_server_action.triggered.connect(lambda: self.start_server())
-        self.menu.addAction(self.start_server_action)
-        self.stop_server_action = QAction(tr("menu_stop_server", "Sunucuyu Durdur"))
-        self.stop_server_action.triggered.connect(lambda: self.stop_server())
-        self.menu.addAction(self.stop_server_action)
-        self.menu.addSeparator()
-        self.about_action = QAction(tr("menu_about", "Hakkında / About"))
-        self.about_action.triggered.connect(self.show_about_dialog)
-        self.menu.addAction(self.about_action)
-        self.tray_icon.setContextMenu(self.menu)
+        """Sistem tepsi ikonunu oluştur.
+
+        Modern GNOME/Wayland ortamlarında tray protokolü (StatusNotifier / DBus
+        org.kde.StatusNotifierWatcher) olmayabilir. Bu yüzden başlatma
+        try-except içindedir: tepsi kullanılamazsa uygulama pencere modunda
+        çalışmaya devam eder, crash atmaz.
+        """
+        self.tray_available = False
+        try:
+            if not QSystemTrayIcon.isSystemTrayAvailable():
+                self.log(self.get_translated(
+                    "log_tray_unavailable",
+                    "⚠ Sistem tepsisi bu ortamda kullanılamıyor. Pencere modunda devam ediliyor."))
+                return
+            self.tray_icon = QSystemTrayIcon()
+            ip = get_icon_path()
+            if os.path.exists(ip): self.tray_icon.setIcon(QIcon(ip))
+            self.menu = QMenu()
+            tr = self.get_translated
+            self.browse_action = QAction(tr("menu_browse", "Göz At"))
+            self.browse_action.triggered.connect(self.browse_file)
+            self.menu.addAction(self.browse_action)
+            self.start_server_action = QAction(tr("menu_start_server", "Sunucuyu Başlat"))
+            self.start_server_action.triggered.connect(lambda: self.start_server())
+            self.menu.addAction(self.start_server_action)
+            self.stop_server_action = QAction(tr("menu_stop_server", "Sunucuyu Durdur"))
+            self.stop_server_action.triggered.connect(lambda: self.stop_server())
+            self.menu.addAction(self.stop_server_action)
+            self.menu.addSeparator()
+            self.about_action = QAction(tr("menu_about", "Hakkında / About"))
+            self.about_action.triggered.connect(self.show_about_dialog)
+            self.menu.addAction(self.about_action)
+            # Tepsi modunda kalıcı çıkış yolu (minimize-to-tray ile birlikte zorunlu)
+            self.quit_action = QAction(tr("menu_quit", "Çıkış"))
+            self.quit_action.triggered.connect(self.quit_application)
+            self.menu.addAction(self.quit_action)
+            self.tray_icon.setContextMenu(self.menu)
+            # Tek tık / çift tık: pencereyi göster/gizle
+            self.tray_icon.activated.connect(self.on_tray_activated)
+            self.tray_icon.setVisible(True)
+            self.tray_available = True
+        except Exception as e:
+            # Tray D-Bus/protokol hatası uygulamayı çökertmemeli
+            print(f"⚠ System tray could not be initialized ({type(e).__name__}: {e}). "
+                  f"Continuing in window mode.")
+            self.tray_available = False
+
+    def on_tray_activated(self, reason):
+        """Tepsi simgesine tıklanınca pencereyi göster/gizle."""
+        if reason not in (QSystemTrayIcon.ActivationReason.Trigger,
+                          QSystemTrayIcon.ActivationReason.DoubleClick):
+            return
+        try:
+            if self.window.isVisible():
+                self.window.hide()
+            else:
+                self.window.show()
+                self.window.raise_()
+                self.window.activateWindow()
+        except Exception:
+            pass
+
+    def quit_application(self):
+        """Tepsi menüsünden kesin çıkış: minimize-to-tray davranışını atlar."""
+        self._force_quit = True
+        try:
+            window = getattr(self, 'window', None)
+            if window is not None and window.isVisible():
+                # closeEvent kapanış temizliğini (sunucu durdurma vb.) yapar
+                window.close()
+                return
+        except Exception:
+            pass
+        # Pencere zaten gizliyse close() hiçbir şey yapmaz; elle temizle ve çık.
+        try:
+            self.log(self.get_translated("log_app_closing", "✓ Uygulama kapatılıyor."))
+            self.stop_server()
+            self.cleanup_tray()
+        except Exception:
+            pass
+        app = QApplication.instance()
+        if app is not None:
+            try:
+                app.quit()
+            except Exception:
+                pass
 
     def _init_main_window(self):
         self.log_window = QTextEdit()
@@ -180,6 +247,10 @@ class LlamaTray:
         self.language_combo.currentTextChanged.connect(self.on_language_changed)
         bottom = QHBoxLayout()
         bottom.addWidget(self.language_combo)
+        # "Minimize to Tray on Close" ayarı: kapatma butonu pencereyi gizler,
+        # uygulama tepside yaşamaya devam eder (sadece tray mevcutken anlamlı).
+        self.minimize_to_tray_checkbox = QCheckBox(tr("minimize_to_tray_on_close", "Kapatırken Tepside Minimize Et"))
+        bottom.addWidget(self.minimize_to_tray_checkbox)
         self.about_button = QPushButton(tr("about_button", "ℹ️ Uygulama Hakkında"))
         self.about_button.clicked.connect(self.show_about_dialog)
         self.about_button.setFixedHeight(28)
@@ -187,20 +258,30 @@ class LlamaTray:
         bottom.addStretch()
 
         # Sekmeli ana layout
+        # Düşük çözünürlüklerde (örn. 1024x768) içerik taşmasını/üst üste binmeyi
+        # önlemek için Ana ve Ayarlar sekmeleri QScrollArea içine alınmıştır.
         self.tabs = QTabWidget()
-        self.main_tab = QWidget()
-        main_layout = QVBoxLayout(self.main_tab)
+        self.main_tab = QScrollArea()
+        self.main_tab.setWidgetResizable(True)
+        self.main_tab.setFrameShape(QScrollArea.Shape.NoFrame)
+        main_content = QWidget()
+        main_layout = QVBoxLayout(main_content)
         for widget in (self.log_window, self.model_selector,
                        self.server_controls, self.monitor_widget):
             main_layout.addWidget(widget)
         main_layout.addStretch()
+        self.main_tab.setWidget(main_content)
 
-        self.settings_tab = QWidget()
-        settings_layout = QVBoxLayout(self.settings_tab)
+        self.settings_tab = QScrollArea()
+        self.settings_tab.setWidgetResizable(True)
+        self.settings_tab.setFrameShape(QScrollArea.Shape.NoFrame)
+        settings_content = QWidget()
+        settings_layout = QVBoxLayout(settings_content)
         for widget in (self.mode_group, self.advanced_settings,
                        self.router_settings, self.command_preview):
             settings_layout.addWidget(widget)
         settings_layout.addStretch()
+        self.settings_tab.setWidget(settings_content)
 
         self.profiles_tab = QWidget()
         profiles_layout = QVBoxLayout(self.profiles_tab)
@@ -217,12 +298,45 @@ class LlamaTray:
         self.window = QMainWindow()
         cw = QWidget(); cw.setLayout(self.layout); self.window.setCentralWidget(cw)
         self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {VERSION_DISPLAY}")
-        self.window.setGeometry(100, 100, 560, 680)
+        # Düşük çözünürlüklü ekranlarda (1024x768 vb.) pencere açılabilmesi için
+        # minimum boyut düşük tutulur; içerik QScrollArea içinde kayar.
+        self.window.setMinimumSize(480, 420)
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            w = min(560, avail.width())
+            h = min(680, avail.height())
+            x = avail.left() + max(0, (avail.width() - w) // 2)
+            y = avail.top() + max(0, (avail.height() - h) // 3)
+            self.window.setGeometry(x, y, w, h)
+        else:
+            self.window.setGeometry(100, 100, 560, 680)
         # ProfileManager'a window referansını ver
         self.profile_manager.callbacks['window'] = self.window
 
         orig_close = self.window.closeEvent
         def win_close(e):
+            # "Minimize to Tray on Close" etkinse ve tepsi kullanılabilirse
+            # pencereyi kapatmak yerine gizle; sunucu çalışmaya devam eder.
+            checkbox = getattr(self, 'minimize_to_tray_checkbox', None)
+            if (not self._force_quit and checkbox is not None
+                    and checkbox.isChecked() and getattr(self, 'tray_available', False)):
+                try:
+                    self.log(tr("log_minimized_to_tray", "📴 Uygulama tepside minimize edildi. Sunucu çalışmaya devam ediyor."))
+                except Exception:
+                    pass
+                try:
+                    self.window.hide()
+                finally:
+                    e.ignore()
+                return
+            if (not self._force_quit and checkbox is not None
+                    and checkbox.isChecked()):
+                # Ayar açık ama tepsi yok: gizlersek uygulamaya ulaşılamaz → kapat.
+                try:
+                    self.log(tr("log_minimize_no_tray", "⚠ Sistem tepsisi kullanılamadığı için uygulama kapatılıyor."))
+                except Exception:
+                    pass
             try:
                 self.log("=" * 60)
                 self.log(tr("log_window_closing", "🚪 Pencere kapanıyor, sunucu durdurması yapılıyor..."))
@@ -297,10 +411,15 @@ class LlamaTray:
 
     def apply_translations(self):
         tr = self.get_translated
-        for a, k in [(self.browse_action, "menu_browse"), (self.start_server_action, "menu_start_server"),
-                     (self.stop_server_action, "menu_stop_server"), (self.about_action, "menu_about")]:
-            a.setText(tr(k))
+        if getattr(self, 'tray_available', False):
+            for a, k in [(self.browse_action, "menu_browse"), (self.start_server_action, "menu_start_server"),
+                         (self.stop_server_action, "menu_stop_server"), (self.about_action, "menu_about"),
+                         (self.quit_action, "menu_quit")]:
+                a.setText(tr(k))
         if hasattr(self, 'about_button'): self.about_button.setText(tr("about_button", "ℹ️ Uygulama Hakkında"))
+        if hasattr(self, 'minimize_to_tray_checkbox'):
+            self.minimize_to_tray_checkbox.setText(
+                tr("minimize_to_tray_on_close", "Kapatırken Tepside Minimize Et"))
         if hasattr(self, 'tabs'):
             self.tabs.setTabText(0, tr("tab_main", "Ana"))
             self.tabs.setTabText(1, tr("tab_settings", "Ayarlar"))
@@ -411,6 +530,8 @@ class LlamaTray:
                       "models_dir": self.router_settings.models_dir_lineedit.text().strip(),
                       "no_models_autoload": not self.router_settings.no_autoload_checkbox.isChecked(),
                       "jinja": self.router_settings.jinja_checkbox.isChecked(),
+                      "minimize_to_tray_on_close": (self.minimize_to_tray_checkbox.isChecked()
+                                                    if hasattr(self, 'minimize_to_tray_checkbox') else False),
                       "language": self.current_language}
             with open(cp, "w", encoding="utf-8") as f: json.dump(config, f, indent=2)
             self.log(self.get_translated("log_config_saved", "✓ Ayarlar başarıyla kaydedildi."))
@@ -459,6 +580,9 @@ class LlamaTray:
             if p is not None:
                 try: self.advanced_settings.port_spinbox.setValue(int(p))
                 except (ValueError, TypeError): self.log(self.get_translated("log_port_load_error", "⚠ Port geçersiz"))
+            mtt = config.get("minimize_to_tray_on_close")
+            if mtt is not None and hasattr(self, 'minimize_to_tray_checkbox'):
+                self.minimize_to_tray_checkbox.setChecked(bool(mtt))
             ep = config.get("extra_params")
             if ep is not None: self.advanced_settings.extra_params_lineedit.setText(str(ep))
             mp = config.get("mmproj_path")

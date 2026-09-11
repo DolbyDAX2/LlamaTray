@@ -46,7 +46,23 @@ def main():
         os.environ["QT_QPA_PLATFORM_THEME"] = "gnome"
     # Diğer ortamlarda (XFCE, i3, Sway, vs.) varsayılan Qt tema kullanılsın
 
-    app = QApplication(sys.argv)
+    # Qt platform (xcb) başlatması başarısız olabilir; örneğin Wayland'da eksik
+    # D-Bus/tray desteği veya minimal X11 kurulumlarında eksik libxcb kütüphaneleri.
+    # Kullanıcıya işe yarayan bir mesaj göster, unhandled exception fırlatma.
+    try:
+        app = QApplication(sys.argv)
+    except Exception as exc:
+        print(f"❌ Qt could not be initialized: {exc}")
+        print("   Hint: install the missing Qt/XCB runtime libraries (see install.sh),")
+        print("         or set QT_QPA_PLATFORM (e.g. 'xcb') and try again.")
+        sys.exit(1)
+
+    # GNOME/Wayland görev çubuğu/dock ikon gruplama: masaüstü dosya adı
+    # herhangi bir pencere oluşturulmadan ÖNCE ayarlanmalıdır.
+    try:
+        app.setDesktopFileName("llamatray.desktop")
+    except Exception:
+        pass  # Gruplama sadece bir iyileştirme; asla crash nedeni olmasın
 
     tray = LlamaTray()
     tray.window.show()

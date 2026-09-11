@@ -167,7 +167,12 @@
     "router_status_unloaded": "Boşta",
     "router_status_unknown": "Bilinmiyor",
     "hf_router_model_downloaded": "✓ Model router klasörüne indirildi: {file_path}",
-    "router_status_loading": "Yükleniyor"
+    "router_status_loading": "Yükleniyor",
+    "menu_quit": "Çıkış",
+    "minimize_to_tray_on_close": "Kapatırken Tepside Minimize Et",
+    "log_minimized_to_tray": "📴 Uygulama tepside minimize edildi. Sunucu çalışmaya devam ediyor.",
+    "log_minimize_no_tray": "⚠ Sistem tepsisi kullanılamadığı için uygulama kapatılıyor.",
+    "log_tray_unavailable": "⚠ Sistem tepsisi bu ortamda kullanılamıyor. Pencere modunda devam ediliyor."
   },
   "en": {
     "config_language": "Language",
@@ -337,6 +342,11 @@
     "router_status_unloaded": "Unloaded",
     "router_status_unknown": "Unknown",
     "hf_router_model_downloaded": "✓ Model downloaded to the router directory: {file_path}",
-    "router_status_loading": "Loading"
+    "router_status_loading": "Loading",
+    "menu_quit": "Quit",
+    "minimize_to_tray_on_close": "Minimize to Tray on Close",
+    "log_minimized_to_tray": "Application minimized to tray. The server keeps running.",
+    "log_minimize_no_tray": "System tray is unavailable, so the application will quit.",
+    "log_tray_unavailable": "System tray is not available in this environment. Continuing in window mode."
   }
 }

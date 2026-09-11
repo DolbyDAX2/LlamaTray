@@ -25,6 +25,14 @@ LlamaTray is a lightweight and stable PyQt6-based **Llama.cpp (llama-server)** m
 - **mmproj Support:** Attach a multimodal projector to compatible vision-language models through `--mmproj`.
 - **Command Preview:** Real-time launch command preview showing the exact `llama-server` command before starting.
 
+### 🆕 What's New in v1.5.0
+
+- Cross-platform installation fixes for Ubuntu (GNOME/XFCE/MATE) and Fedora (Wayland/X11): the installer now adds `~/.local/bin` to your PATH using shell-native syntax (bash/zsh/fish aware, with config-file scanning fallback), installs missing Qt6/XCB runtime libraries on Apt-based systems, and registers the app icon and `.desktop` entry (`StartupWMClass=LlamaTray`, hicolor 256x256 icon, `gtk-update-icon-cache`).
+- Proper GNOME/Wayland dock/taskbar icon grouping via `app.setDesktopFileName("llamatray.desktop")`.
+- Graceful system-tray fallback: if no tray protocol (StatusNotifier D-Bus) is available on modern GNOME/Wayland sessions, LlamaTray keeps running in window mode without unhandled exceptions.
+- New **"Minimize to Tray on Close"** setting: the close button hides the window into the system tray while the server keeps running. The tray menu gains a Quit action, and single/double-clicking the tray icon restores the window.
+- Responsive UI: Main and Settings tabs are now `QScrollArea`-based, the dynamic minimum window size supports 1024x768 screens, and the Router "Active Models" table uses dynamic column resizing with its status label in a dedicated row so it never overlaps table items.
+
 ### 🆕 What's New in v1.4.0
 
 - Three-tab Main / Settings / Profiles interface with collapsible settings sections.
@@ -66,7 +74,7 @@ chmod +x install.sh
 llamatray
 ```
 
-The installer automatically detects your distribution and installs required system packages (`python3-venv`, `python3-pip`). It creates a virtual environment, installs Python dependencies, generates a launcher script at `~/.local/bin/llamatray`, and registers a `.desktop` file for your application menu.
+The installer automatically detects your distribution and installs required system packages (`python3-venv`, `python3-pip`). It creates a virtual environment, installs Python dependencies, generates a launcher script at `~/.local/bin/llamatray`, and registers a `.desktop` file for your application menu. On Apt-based systems it also installs missing Qt6/XCB runtime libraries (for minimal X11 desktops such as XFCE/MATE), registers the application icon into `~/.local/share/icons/hicolor`, and adds `~/.local/bin` to your shell's PATH using shell-native syntax (bash/zsh/fish aware).
 
 #### Fedora
 
@@ -219,6 +227,14 @@ LlamaTray, Linux (özellikle Arch Linux / CachyOS) için geliştirilmiş, PyQt6 
 - **mmproj Desteği:** Uyumlu görsel-dil modellerine `--mmproj` ile çok modlu projektör bağlayın.
 - **Komut Önizlemesi:** Sunucu başlatılmadan önce tam `llama-server` komutunu gösteren gerçek zamanlı önizleme.
 
+### 🆕 v1.5.0 Yenilikleri
+
+- Ubuntu (GNOME/XFCE/MATE) ve Fedora (Wayland/X11) için çapraz platform kurulum düzeltmeleri: kurulum betiği artık `~/.local/bin` yolunu kabuğunuza özgü sözdizimiyle PATH'e ekler (bash/zsh/fish destekli, yapılandırma dosyası tarama yedeği ile), Apt tabanlı sistemlerde eksik Qt6/XCB çalışma zamanı kütüphanelerini kurar ve uygulama simgesini + `.desktop` girişini (`StartupWMClass=LlamaTray`, hicolor 256x256 simge, `gtk-update-icon-cache`) kaydeder.
+- `app.setDesktopFileName("llamatray.desktop")` ile GNOME/Wayland dock/görev çubuğu ikon gruplaması.
+- Zarif sistem tepsisi yedeği: modern GNOME/Wayland oturumlarında tray protokolü (StatusNotifier D-Bus) yoksa LlamaTray ele alınmamış istisna fırlatmaksızın pencere modunda çalışmaya devam eder.
+- Yeni **"Kapatırken Tepside Minimize Et"** ayarı: kapatma butonu pencereyi sistem tepisine gizler, sunucu çalışmaya devam eder. Tepsi menüsüne Çıkış eylemi eklendi; tepsinin tek/tıklanması pencereyi geri açar.
+- Duyarlı arayüz: Ana ve Ayarlar sekmeleri artık `QScrollArea` tabanlı, dinamik minimum pencere boyutu 1024x768 ekranları destekler ve Router "Aktif Modeller" tablosu dinamik sütun yeniden boyutlandırma kullanır; durum etiketi kendi satırında olduğu için tablo öğeleriyle üst üste binmez.
+
 ### 🆕 v1.4.0 Yenilikleri
 
 - Daraltılabilir ayar bölümlerine sahip üç sekmeli Ana / Ayarlar / Profiller arayüzü.
@@ -260,7 +276,7 @@ chmod +x install.sh
 llamatray
 ```
 
-Kurulum betiği dağıtımınızı otomatik olarak tespit eder ve gerekli sistem paketlerini (`python3-venv`, `python3-pip`) yükler. Sanal ortam oluşturur, Python bağımlılıklarını kurar, `~/.local/bin/llamatray` başlatma betiğini oluşturur ve uygulama menünüz için `.desktop` dosyası kaydeder.
+Kurulum betiği dağıtımınızı otomatik olarak tespit eder ve gerekli sistem paketlerini (`python3-venv`, `python3-pip`) yükler. Sanal ortam oluşturur, Python bağımlılıklarını kurar, `~/.local/bin/llamatray` başlatma betiğini oluşturur ve uygulama menünüz için `.desktop` dosyası kaydeder. Apt tabanlı sistemlerde ayrıca eksik Qt6/XCB çalışma zamanı kütüphanelerini (XFCE/MATE gibi minimal X11 masaüstleri için) kurar, uygulama simgesini `~/.local/share/icons/hicolor` altına kaydeder ve `~/.local/bin` yolunu kabuğunuza özgü sözdizimiyle PATH'e ekler (bash/zsh/fish destekli).
 
 #### Fedora
 
