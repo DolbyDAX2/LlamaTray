@@ -1483,9 +1483,21 @@ class LlamaCppManagerDialog(QDialog):
             self.build_start_btn.setEnabled(not busy)
         if kind == "prebuilt" or kind is None:
             self.prebuilt_btn.setEnabled(not busy)
-        any_running = ((self._build_worker is not None and self._build_worker.isRunning())
-                       or (self._prebuilt_worker is not None and self._prebuilt_worker.isRunning())
-                       or (self._dep_worker is not None and self._dep_worker.isRunning()))
+        build_running = (self._build_worker is not None
+                         and self._build_worker.isRunning())
+        prebuilt_running = (self._prebuilt_worker is not None
+                            and self._prebuilt_worker.isRunning())
+        dep_running = (self._dep_worker is not None
+                       and self._dep_worker.isRunning())
+        # QThread, finished_* sinyali işlenirken kısa süreliğine hâlâ running
+        # görünebilir. Tamamlanan kind'ı busy hesabından çıkar.
+        if kind == "build" and not busy:
+            build_running = False
+        if kind == "prebuilt" and not busy:
+            prebuilt_running = False
+        if kind == "deps" and not busy:
+            dep_running = False
+        any_running = build_running or prebuilt_running or dep_running
         if kind is None:
             # stop butonu: herhangi bir worker çalışıyorsa aktif
             self.stop_btn.setEnabled(any_running)
