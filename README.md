@@ -97,11 +97,10 @@ The installer automatically detects Fedora and installs `python3` via `dnf` if n
 
 ```bash
 # From the repository root:
-./uninstall.sh                 # removes everything
-./uninstall.sh --keep-config   # keep saved settings & profiles (~/.llamatray)
+./uninstall.sh
 ```
 
-Removes the launcher (`~/.local/bin/llamatray`), the `.desktop` entry, the hicolor icon, and the PATH entries the installer added (bash/zsh/fish). System packages are shared dependencies and are kept. If you installed via AUR, use `yay -Rsn llamatray` instead.
+Removes the launcher (`~/.local/bin/llamatray`), the `.desktop` entry, the hicolor icon, and the PATH entries the installer added (bash/zsh/fish). Saved settings & profiles in `~/.llamatray` are **never** removed by the uninstaller. System packages are shared dependencies and are kept. If you installed via AUR, use `yay -Rsn llamatray` instead.
 
 #### Manual Installation
 
@@ -309,11 +308,10 @@ Kurulum betiği Fedora'yı otomatik olarak tespit eder ve gerekirse `dnf` ile `p
 
 ```bash
 # Depo kök dizininden:
-./uninstall.sh                 # her şeyi kaldırır
-./uninstall.sh --keep-config   # kayıtlı ayarları ve profilleri (~/.llamatray) korur
+./uninstall.sh
 ```
 
-Başlatıcıyı (`~/.local/bin/llamatray`), `.desktop` girişini, hicolor simgesini ve kurulum betiğinin eklediği PATH satırlarını (bash/zsh/fish) kaldırır. Sistem paketleri ortak bağımlılıklardır ve korunur. AUR üzerinden kurduysanız bunun yerine `yay -Rsn llamatray` kullanın.
+Başlatıcıyı (`~/.local/bin/llamatray`), `.desktop` girişini, hicolor simgesini ve kurulum betiğinin eklediği PATH satırlarını (bash/zsh/fish) kaldırır. `~/.llamatray` içindeki kayıtlı ayarlar ve profiller kaldırma betiği tarafından **asla** silinmez. Sistem paketleri ortak bağımlılıklardır ve korunur. AUR üzerinden kurduysanız bunun yerine `yay -Rsn llamatray` kullanın.
 
 #### Manuel Kurulum
 
