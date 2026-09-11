@@ -95,7 +95,25 @@ chmod +x install.sh
 llamatray
 ```
 
-The installer automatically detects Fedora and installs `python3` via `dnf` if needed. On GNOME sessions it also installs/enables `gnome-shell-extension-appindicator`, which is required for Qt tray icons; log out and back in once if GNOME does not show the icon immediately.
+The installer automatically detects Fedora and installs `python3` via `dnf` if needed. On GNOME sessions it also installs/enables `gnome-shell-extension-appindicator`, which is required for Qt tray icons. **GNOME may refuse automatic activation, especially in a virtual machine; the extension must be enabled manually and the GNOME session must be restarted.**
+
+##### Fedora GNOME tray extension
+
+If LlamaTray says that the system tray is unavailable, run:
+
+```bash
+sudo dnf install -y gnome-shell-extension-appindicator
+gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com
+gnome-extensions info appindicatorsupport@rgcjonas.gmail.com
+```
+
+The last command should show `State: ENABLED`. Then log out of GNOME and log back in. If the UUID differs on your Fedora/Nobara release, find it with:
+
+```bash
+rpm -ql gnome-shell-extension-appindicator | grep '/metadata.json$'
+```
+
+Use the extension directory name as the UUID in `gnome-extensions enable`. In a VM, GNOME Shell extensions or tray rendering may still be unavailable; in that case LlamaTray safely continues in window mode.
 
 #### Uninstall
 
@@ -324,7 +342,25 @@ chmod +x install.sh
 llamatray
 ```
 
-Kurulum betiği Fedora'yı otomatik olarak tespit eder ve gerekirse `dnf` ile `python3` kurulumunu yapar. GNOME oturumlarında Qt tepsi ikonları için gerekli `gnome-shell-extension-appindicator` paketini de kurup etkinleştirir; ikon hemen görünmezse GNOME oturumunu bir kez kapatıp açın.
+Kurulum betiği Fedora'yı otomatik olarak tespit eder ve gerekirse `dnf` ile `python3` kurulumunu yapar. GNOME oturumlarında Qt tepsi ikonları için gerekli `gnome-shell-extension-appindicator` paketini de kurup etkinleştirir. **Özellikle sanal makinelerde GNOME otomatik etkinleştirmeyi reddedebilir; eklentiyi manuel etkinleştirip GNOME oturumunu yeniden başlatmanız gerekir.**
+
+##### Fedora GNOME sistem tepsisi eklentisi
+
+LlamaTray sistem tepsisinin kullanılamadığını söylüyorsa:
+
+```bash
+sudo dnf install -y gnome-shell-extension-appindicator
+gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com
+gnome-extensions info appindicatorsupport@rgcjonas.gmail.com
+```
+
+Son komutta `State: ENABLED` görünmelidir. Ardından GNOME oturumunu kapatıp tekrar açın. Fedora/Nobara sürümünüzde UUID farklıysa şu komutla bulun:
+
+```bash
+rpm -ql gnome-shell-extension-appindicator | grep '/metadata.json$'
+```
+
+Eklenti klasörünün adını UUID olarak `gnome-extensions enable` komutunda kullanın. Sanal makinelerde GNOME Shell eklentileri veya tepsi çizimi yine de kullanılamayabilir; bu durumda LlamaTray güvenli şekilde pencere modunda çalışmaya devam eder.
 
 #### Kaldırma
 
