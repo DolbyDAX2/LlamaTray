@@ -5,8 +5,10 @@ LlamaTray - llama.cpp sunucusu için sistem tepsisi uygulaması
 Bu modül, uygulamanın giriş noktasıdır (entry point).
 """
 
+import signal
 import sys
 import os
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication
 from .ui import LlamaTray
 from .ui_utils import cleanup_tray_icon
@@ -59,10 +61,24 @@ def main():
 
     # GNOME/Wayland görev çubuğu/dock ikon gruplama: masaüstü dosya adı
     # herhangi bir pencere oluşturulmadan ÖNCE ayarlanmalıdır.
+    # NOT: '.desktop' uzantısı EKLENMEZ — Qt bunu otomatik ekler; uzantılı
+    # yazmak "Unable to find desktop file" uyarısına neden olur.
     try:
-        app.setDesktopFileName("llamatray.desktop")
+        app.setDesktopFileName("llamatray")
     except Exception:
         pass  # Gruplama sadece bir iyileştirme; asla crash nedeni olmasın
+
+    # Terminal'den Ctrl+C (SIGINT) ile nazik kapatma: Qt event loop C++ tarafında
+    # block'lendiği için Python signal handler'ının çalışması için 500ms'lik
+    # periyodik timer ile kontrol verilmesi gerekir; aksi halde Ctrl+C unhandled
+    # KeyboardInterrupt traceback'i fırlatır.
+    try:
+        signal.signal(signal.SIGINT, lambda sig, frame: app.quit())
+    except (ValueError, OSError):
+        pass  # Ana thread dışında çağrılırsa vs. — varsayılan davranış kalsın
+    _sigint_yield_timer = QTimer()
+    _sigint_yield_timer.timeout.connect(lambda: None)
+    _sigint_yield_timer.start(500)
 
     tray = LlamaTray()
     tray.window.show()
