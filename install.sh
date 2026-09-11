@@ -14,6 +14,8 @@ HOME_DIR="$HOME"
 DESKTOP_DIR="$HOME_DIR/.local/share/applications"
 BIN_DIR="$HOME_DIR/.local/bin"
 VENV_DIR="$INSTALL_DIR/venv"
+PYTHON_BIN=""
+PYTHON_VERSION=""
 ICON_SRC="$INSTALL_DIR/LlamaTray/assets/llamatray.png"
 ICON_THEME_ROOT="$HOME_DIR/.local/share/icons/hicolor"
 DESKTOP_FILE="$DESKTOP_DIR/llamatray.desktop"
@@ -143,27 +145,104 @@ install_xcb_deps() {
     info "Qt6/XCB runtime dependencies installed."
 }
 
-# Check if python3 is available
+# Select the highest installed Python 3 interpreter (python3, python3.12, python3.14, ...)
+select_python() {
+    local candidate path version best_version="" best_path=""
+    while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
+        path=$(command -v "$candidate" 2>/dev/null || true)
+        [ -x "$path" ] || continue
+        version=$(
+            "$path" -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")' \
+                2>/dev/null || true
+        )
+        [[ "$version" =~ ^3\.[0-9]+$ ]] || continue
+        if [ -z "$best_version" ] || \
+           [ "$(printf '%s\n%s\n' "$best_version" "$version" | sort -V | tail -n1)" = "$version" ]; then
+            best_version="$version"
+            best_path="$path"
+        fi
+    done < <(compgen -c | grep -E '^python3(\.[0-9]+)?$' | sort -u)
+
+    if [ -n "$best_path" ]; then
+        PYTHON_BIN="$best_path"
+        PYTHON_VERSION="$best_version"
+    else
+        PYTHON_BIN=""
+        PYTHON_VERSION=""
+    fi
+}
+
+# Install the venv/pip package for the selected Python version.
+# Ubuntu/Debian may require python3.12-venv or python3.14-venv specifically.
+install_python_runtime_deps() {
+    local distro versioned_venv="" packages=()
+    distro=$(detect_distro)
+
+    case "$distro" in
+        ubuntu|debian|linuxmint)
+            versioned_venv="python${PYTHON_VERSION}-venv"
+            info "Ensuring Python $PYTHON_VERSION virtualenv support is installed."
+            DEBIAN_FRONTEND=noninteractive $SUDO apt-get update
+            packages=(python3-pip)
+            if apt-cache show "$versioned_venv" &>/dev/null; then
+                packages+=("$versioned_venv")
+                info "Using version-specific package: $versioned_venv"
+            elif apt-cache show python3-venv &>/dev/null; then
+                packages+=(python3-venv)
+                warn "$versioned_venv is unavailable; falling back to python3-venv."
+            else
+                error "No Python venv package is available for Python $PYTHON_VERSION."
+                exit 1
+            fi
+            DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y "${packages[@]}"
+            ;;
+        fedora)
+            $SUDO dnf install -y python3-pip
+            ;;
+        arch|archlinux)
+            $SUDO pacman -S --needed --noconfirm python-pip
+            ;;
+        *)
+            # Other distributions generally ship venv with Python; pip is a safe fallback.
+            if command -v zypper &>/dev/null; then
+                $SUDO zypper install -y python3-pip
+            fi
+            ;;
+    esac
+}
+
+# Check if Python 3 is available and choose the highest installed version.
 check_python() {
-    if ! command -v python3 &>/dev/null; then
+    select_python
+    if [ -z "$PYTHON_BIN" ]; then
         error "Python 3 not found. Installing system dependencies..."
         install_system_deps
+        select_python
     fi
-    # Verify again
-    if ! command -v python3 &>/dev/null; then
+    if [ -z "$PYTHON_BIN" ]; then
         error "Python 3 still not available after installation attempt."
         exit 1
     fi
-    info "Python 3 found: $(python3 --version)"
+    info "Python selected: $PYTHON_BIN ($($PYTHON_BIN --version 2>&1))"
 }
 
 # Create virtual environment
 create_venv() {
-    if [ -d "$VENV_DIR" ]; then
+    # A directory without bin/python is an interrupted/failed venv creation.
+    if [ -d "$VENV_DIR" ] && [ ! -x "$VENV_DIR/bin/python" ]; then
+        warn "Incomplete virtual environment found; recreating $VENV_DIR"
+        rm -rf "$VENV_DIR"
+    fi
+    if [ -x "$VENV_DIR/bin/python" ]; then
         info "Virtual environment already exists at $VENV_DIR"
     else
-        info "Creating virtual environment at $VENV_DIR"
-        python3 -m venv "$VENV_DIR"
+        info "Creating virtual environment at $VENV_DIR with Python $PYTHON_VERSION"
+        if ! "$PYTHON_BIN" -m venv "$VENV_DIR"; then
+            error "Could not create the virtual environment for Python $PYTHON_VERSION."
+            error "The matching python${PYTHON_VERSION}-venv package may be unavailable."
+            exit 1
+        fi
     fi
 }
 
@@ -404,10 +483,13 @@ main() {
         exit 1
     fi
 
-    # Step 1: Check Python availability
+    # Step 1: Check Python availability and choose the highest installed version
     check_python
 
-    # Step 2: Create virtual environment
+    # Step 2: Install the matching venv/pip runtime packages
+    install_python_runtime_deps
+
+    # Step 3: Create virtual environment
     create_venv
 
     # Step 3: Install Python dependencies
