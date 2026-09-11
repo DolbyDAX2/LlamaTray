@@ -65,8 +65,20 @@ install_system_deps() {
             ;;
         fedora)
             info "Detected Fedora system."
-            info "Installing system dependencies: python3"
-            $SUDO dnf install -y python3
+            local fedora_pkgs=(python3)
+            # GNOME Shell legacy tray'i göstermez; QSystemTrayIcon için
+            # AppIndicator/StatusNotifier eklentisini de kur.
+            local desktop_context="${XDG_CURRENT_DESKTOP:-} ${XDG_SESSION_DESKTOP:-} ${DESKTOP_SESSION:-}"
+            if [[ "$desktop_context" =~ [Gg][Nn][Oo][Mm][Ee] ]] || command -v gnome-shell &>/dev/null; then
+                fedora_pkgs+=(gnome-shell-extension-appindicator)
+                info "GNOME tray support: installing gnome-shell-extension-appindicator"
+            fi
+            $SUDO dnf install -y "${fedora_pkgs[@]}"
+            if command -v gnome-extensions &>/dev/null; then
+                gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com \
+                    >/dev/null 2>&1 || warn "Could not enable AppIndicator extension automatically."
+                info "Log out/in of GNOME once if the tray icon is not visible immediately."
+            fi
             ;;
         arch|archlinux)
             info "Detected Arch Linux system."

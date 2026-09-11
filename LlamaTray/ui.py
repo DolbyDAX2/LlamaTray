@@ -45,6 +45,8 @@ class LlamaTray:
 
         # 2. İkonları yükle + tray icon oluştur (widget'lar henüz gerekmiyor)
         self._load_status_icons()
+        self._tray_retry_attempts = 0
+        self._tray_unavailable_logged = False
         self._init_tray_icon()
 
         # 3. Ana pencere ve tüm widget'ları oluştur
@@ -108,20 +110,59 @@ class LlamaTray:
         except Exception:
             pass
 
+    def _is_gnome_session(self):
+        """GNOME oturumunu tespit et (özellikle Fedora GNOME/Wayland)."""
+        session = " ".join((
+            os.environ.get("XDG_CURRENT_DESKTOP", ""),
+            os.environ.get("XDG_SESSION_DESKTOP", ""),
+            os.environ.get("DESKTOP_SESSION", ""),
+        )).lower()
+        return "gnome" in session or bool(os.environ.get("GNOME_DESKTOP_SESSION_ID"))
+
+    def _schedule_tray_retry(self):
+        """GNOME Shell eklentisi geç yüklenirse tray kaydını yeniden dene."""
+        if self.tray_available or self._tray_retry_attempts >= 5:
+            return
+        self._tray_retry_attempts += 1
+        QTimer.singleShot(1500, self._retry_tray_icon)
+
+    def _retry_tray_icon(self):
+        if self.tray_available:
+            return
+        self._init_tray_icon()
+        if self.tray_available:
+            if hasattr(self, "window"):
+                self._update_status_icon()
+                self.apply_translations()
+
     def _init_tray_icon(self):
         """Sistem tepsi ikonunu oluştur.
 
         Modern GNOME/Wayland ortamlarında tray protokolü (StatusNotifier / DBus
-        org.kde.StatusNotifierWatcher) olmayabilir. Bu yüzden başlatma
-        try-except içindedir: tepsi kullanılamazsa uygulama pencere modunda
-        çalışmaya devam eder, crash atmaz.
+        org.kde.StatusNotifierWatcher) olmayabilir. Fedora GNOME'da
+        gnome-shell-extension-appindicator gerekir. Başlatma try-except içindedir;
+        tepsi kullanılamazsa uygulama pencere modunda çalışmaya devam eder ve
+        eklenti geç hazır olursa birkaç kez yeniden denenir.
         """
         self.tray_available = False
         try:
             if not QSystemTrayIcon.isSystemTrayAvailable():
-                self.log(self.get_translated(
-                    "log_tray_unavailable",
-                    "⚠ Sistem tepsisi bu ortamda kullanılamıyor. Pencere modunda devam ediliyor."))
+                if not self._tray_unavailable_logged:
+                    if self._is_gnome_session():
+                        message = self.get_translated(
+                            "log_tray_unavailable_gnome",
+                            "⚠ GNOME'da sistem tepsisi için AppIndicator/StatusNotifier "
+                            "eklenti gerekir. Fedora'da 'sudo dnf install -y "
+                            "gnome-shell-extension-appindicator' çalıştırıp GNOME "
+                            "oturumunu kapatıp açın. Pencere modunda devam ediliyor.")
+                    else:
+                        message = self.get_translated(
+                            "log_tray_unavailable",
+                            "⚠ Sistem tepsisi bu ortamda kullanılamıyor. "
+                            "Pencere modunda devam ediliyor.")
+                    self.log(message)
+                    self._tray_unavailable_logged = True
+                self._schedule_tray_retry()
                 return
             self.tray_icon = QSystemTrayIcon()
             self.tray_icon.setIcon(self._icon_off)
@@ -161,6 +202,7 @@ class LlamaTray:
             print(f"⚠ System tray could not be initialized ({type(e).__name__}: {e}). "
                   f"Continuing in window mode.")
             self.tray_available = False
+            self._schedule_tray_retry()
 
     def restore_window(self):
         """Pencereyi tepside geri yükle (MATE/XFCE/X11 fix).
