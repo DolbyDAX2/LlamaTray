@@ -702,6 +702,7 @@ class LlamaCppManagerDialog(QDialog):
         self._dep_worker = None
         self._scan_worker = None
         self._rocm_apt_notice_logged = False
+        self._cuda_apt_notice_logged = False
         self._build_tools = {}
         self._pm = detect_package_manager()
 
@@ -822,6 +823,13 @@ class LlamaCppManagerDialog(QDialog):
             "border: 1px solid #ffb27a; border-radius: 4px; padding: 6px;")
         self.rocm_warning_label.hide()
         layout.addWidget(self.rocm_warning_label)
+        self.cuda_warning_label = QLabel()
+        self.cuda_warning_label.setWordWrap(True)
+        self.cuda_warning_label.setStyleSheet(
+            "color: #8a5a00; background: #fff3e0;"
+            "border: 1px solid #ffb27a; border-radius: 4px; padding: 6px;")
+        self.cuda_warning_label.hide()
+        layout.addWidget(self.cuda_warning_label)
 
         # 6) İlerleme + log (scroll alanı dışında, sabit; canlı & kopyalanabilir)
         self.progress_bar = QProgressBar()
@@ -963,6 +971,47 @@ class LlamaCppManagerDialog(QDialog):
             "eklemeniz gerekmektedir. Standart Ubuntu depolarında bu paketler "
             "yer almaz.")
 
+    def _cuda_apt_note(self):
+        return self._tr(
+            "llm_cuda_apt_driver_note",
+            "Not: Ubuntu/Debian üzerinde CUDA paketleri (`libcuda1` vb.) "
+            "sisteminizde resmi NVIDIA sürücülerinin kurulu olmasını gerektirir. "
+            "Sürücü eksikse otomatik kurulum başarısız olabilir; alternatif "
+            "olarak Hazır İkili (Option B) kullanabilirsiniz.")
+
+    @staticmethod
+    def _nvidia_driver_available():
+        """NVIDIA proprietary driver/ libcuda varlığını kontrol et."""
+        if shutil.which("nvidia-smi"):
+            return True
+        try:
+            from ctypes.util import find_library
+            if find_library("cuda"):
+                return True
+        except Exception:
+            pass
+        for path in (
+            "/usr/lib/x86_64-linux-gnu/nvidia/libcuda.so.1",
+            "/usr/lib/x86_64-linux-gnu/libcuda.so.1",
+            "/usr/lib64/nvidia/libcuda.so.1",
+        ):
+            if os.path.exists(path):
+                return True
+        return False
+
+    def _update_cuda_warning(self):
+        """CUDA + apt seçiliyse NVIDIA sürücüsü gereksinimini göster ve logla."""
+        backend = self.selected_backend()
+        show = (backend == "cuda" and self._pm == "apt")
+        note = self._cuda_apt_note()
+        self.cuda_warning_label.setText(note)
+        self.cuda_warning_label.setVisible(show)
+        if show and not self._cuda_apt_notice_logged:
+            self._append_log(note)
+            self._cuda_apt_notice_logged = True
+        elif not show:
+            self._cuda_apt_notice_logged = False
+
     def _update_rocm_warning(self):
         """ROCm + apt seçiliyse resmi AMD deposu uyarısını göster ve logla."""
         backend = self.selected_backend()
@@ -1024,6 +1073,7 @@ class LlamaCppManagerDialog(QDialog):
             self.pkgs_label.setText("")
         # Buton: herhangi bir araç eksikse (SDK dahil) aktif; pm yoksa pasif
         self.dep_install_btn.setEnabled(bool(missing and pm is not None))
+        self._update_cuda_warning()
         self._update_rocm_warning()
         self._update_sycl_warning()
 
@@ -1035,6 +1085,12 @@ class LlamaCppManagerDialog(QDialog):
         spec = BACKEND_DEPS.get(backend, BACKEND_DEPS["cpu"])
         pm = detect_package_manager()
         self._pm = pm
+        # Ubuntu/Debian CUDA: proprietary sürücü yoksa libcuda1 sanal paketi
+        # çözümlenemeyebilir; hatalı apt kurulumu başlatma.
+        if backend == "cuda" and pm == "apt" and not self._nvidia_driver_available():
+            self._update_cuda_warning()
+            self._append_log(self._cuda_apt_note())
+            return
         # Ubuntu/Debian ROCm: resmi repo eklenmeden apt paket denemesi yapma.
         if backend == "rocm" and pm == "apt":
             self._update_rocm_warning()
@@ -1087,6 +1143,8 @@ class LlamaCppManagerDialog(QDialog):
             self._append_log("✓ Bağımlılıklar kuruldu. Derlemeye hazırsınız.")
         else:
             self._append_log("⚠ Bağımlılık kurulumu başarısız oldu; log'a bakın.")
+            if self.selected_backend() == "cuda" and self._pm == "apt":
+                self._append_log(self._cuda_apt_note())
 
     # ---------------- Option A: Kaynak derleme ----------------
 
