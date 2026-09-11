@@ -25,7 +25,9 @@ from PyQt6.QtWidgets import (QApplication, QDialog, QGroupBox, QHBoxLayout,
                              QVBoxLayout, QWidget)
 
 LLAMA_CPP_REPO_URL = "https://github.com/ggerganov/llama.cpp"
-RELEASES_API_URL = "https://api.github.com/repos/ggerganov/llama.cpp/releases/latest"
+# /latest pre-release'leri dışarıda bırakır; /releases ile en yeni
+# stable veya pre-release kaydını published_at tarihine göre seçiyoruz.
+RELEASES_API_URL = "https://api.github.com/repos/ggerganov/llama.cpp/releases"
 BUILD_ROOT = os.path.expanduser("~/llama.cpp")
 BUILD_BIN_DIR = os.path.join(BUILD_ROOT, "build", "bin")
 LOCAL_BIN_DIR = os.path.expanduser("~/.local/bin")
@@ -138,6 +140,29 @@ def cmake_flags_for(backend_key):
         name = fl[0][2:].split("=")[0]  # "-DGGML_VULKAN=ON" -> "GGML_VULKAN"
         flags.append(f"-D{name}={'ON' if b == backend_key else 'OFF'}")
     return flags
+
+
+def latest_release_from_payload(payload):
+    """GitHub Releases yanıtından en yeni yayımlanmış release'i seç.
+
+    /releases yanıtı liste döndürür ve pre-release kayıtlarını içerir.
+    Test/geriye dönük uyumluluk için tek release nesnesi de kabul edilir.
+    """
+    if isinstance(payload, dict):
+        return payload if payload.get("tag_name") else {}
+    if not isinstance(payload, list):
+        return {}
+    releases = [item for item in payload
+                if isinstance(item, dict)
+                and item.get("tag_name")
+                and not item.get("draft", False)]
+    if not releases:
+        return {}
+    return max(
+        releases,
+        key=lambda item: (item.get("published_at") or
+                          item.get("created_at") or ""),
+    )
 
 
 def detect_package_manager():
@@ -385,8 +410,8 @@ class BuildWorker(QThread):
             response = requests.get(RELEASES_API_URL, timeout=15, headers={
                 "Accept": "application/vnd.github+json", "User-Agent": "LlamaTray"})
             response.raise_for_status()
-            data = response.json()
-            tag = str(data.get("tag_name") or "").strip() if isinstance(data, dict) else ""
+            release = latest_release_from_payload(response.json())
+            tag = str(release.get("tag_name") or "").strip()
             if tag:
                 self.release_detected.emit(tag)
         except Exception as exc:
@@ -527,8 +552,8 @@ class PrebuiltWorker(QThread):
             r = requests.get(RELEASES_API_URL, timeout=30, headers={
                 "Accept": "application/vnd.github+json", "User-Agent": "LlamaTray"})
             r.raise_for_status()
-            release_data = r.json()
-            assets = release_data.get("assets", []) if isinstance(release_data, dict) else []
+            release_data = latest_release_from_payload(r.json())
+            assets = release_data.get("assets", [])
             tag_name = str(release_data.get("tag_name") or "").strip()
             if tag_name:
                 # Option B sürüm etiketi commit hash'i değil, GitHub tag'idir.
