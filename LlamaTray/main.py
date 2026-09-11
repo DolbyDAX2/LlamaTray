@@ -60,10 +60,25 @@ def main():
     # Mevcut masaüstü ortamını tespit et ve ona göre ayar yap
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
     if "kde" in desktop:
-        os.environ["QT_QPA_PLATFORM_THEME"] = "kde"
+        os.environ["QT_QPA_PLATFORMTHEME"] = "kde"
     elif "gnome" in desktop:
-        os.environ["QT_QPA_PLATFORM_THEME"] = "gnome"
-    # Diğer ortamlarda (XFCE, i3, Sway, vs.) varsayılan Qt tema kullanılsın
+        os.environ["QT_QPA_PLATFORMTHEME"] = "gnome"
+    else:
+        # XFCE/MATE/minimal VM oturumlarında xdg-desktop-portal tema backend'i
+        # çalışmıyor veya kurulu olmayabiliyor; gtk3 backend'i portal kaydı
+        # gerektirmeden normal Qt görünümünü korur.
+        os.environ.setdefault("QT_QPA_PLATFORMTHEME", "gtk3")
+
+    # Wayland'da Qt bu değeri QApplication oluşturulurken portal'a kaydeder.
+    # Sonradan setDesktopFileName() çağırmak aynı D-Bus bağlantısı için ikinci
+    # bir uygulama-ID kaydına yol açıp şu uyarıyı üretebilir:
+    # "Connection already associated with an application ID".
+    qt_platform = os.environ.get("QT_QPA_PLATFORM", "").lower()
+    is_wayland_session = bool(
+        os.environ.get("WAYLAND_DISPLAY")
+        or os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland")
+    if is_wayland_session and not qt_platform.startswith("xcb"):
+        os.environ.setdefault("QT_WAYLAND_APP_ID", "llamatray")
 
     # Qt platform (xcb) başlatması başarısız olabilir; örneğin Wayland'da eksik
     # D-Bus/tray desteği veya minimal X11 kurulumlarında eksik libxcb kütüphaneleri.
@@ -76,14 +91,10 @@ def main():
         print("         or set QT_QPA_PLATFORM (e.g. 'xcb') and try again.")
         sys.exit(1)
 
-    # GNOME/Wayland görev çubuğu/dock ikon gruplama: masaüstü dosya adı
-    # herhangi bir pencere oluşturulmadan ÖNCE ayarlanmalıdır.
-    # NOT: '.desktop' uzantısı EKLENMEZ — Qt bunu otomatik ekler; uzantılı
-    # yazmak "Unable to find desktop file" uyarısına neden olur.
-    try:
-        app.setDesktopFileName("llamatray")
-    except Exception:
-        pass  # Gruplama sadece bir iyileştirme; asla crash nedeni olmasın
+    # setDesktopFileName() bazı Qt/portal sürümlerinde QApplication'ın zaten
+    # kaydettiği app ID'yi aynı D-Bus bağlantısında ikinci kez kaydettiriyor.
+    # Bu nedenle app ID yalnızca Wayland'da QApplication'dan önce
+    # QT_WAYLAND_APP_ID ile veriliyor; portal uyarısı uygulamayı durduramaz.
 
     # Terminal'den Ctrl+C (SIGINT) ile nazik kapatma: Qt event loop C++ tarafında
     # block'lendiği için Python signal handler'ının çalışması için 500ms'lik
