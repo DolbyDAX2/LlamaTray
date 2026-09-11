@@ -722,10 +722,12 @@ class DepInstallWorker(QThread):
 class LlamaCppManagerDialog(QDialog):
     """llama.cpp Yöneticisi / Kurucu dialog'u."""
 
-    def __init__(self, translations_func=None, log_func=None, parent=None):
+    def __init__(self, translations_func=None, log_func=None,
+                 server_running_func=None, parent=None):
         super().__init__(parent)
         self._translations = translations_func or (lambda k, d: d)
         self._log_func = log_func
+        self._server_running_func = server_running_func
         self.setWindowTitle(self._tr("llm_title", "llama.cpp Yöneticisi / Kurucu"))
         # Düşük dikey çözünürlüklere (< 768px) uyum: esnek minimum boyut +
         # ekranın kullanılabilir alanına sığdırma.
@@ -839,6 +841,10 @@ class LlamaCppManagerDialog(QDialog):
         self.prebuilt_btn = QPushButton(self._tr("llm_prebuilt_start", "İndir ve Kur"))
         self.prebuilt_btn.clicked.connect(self.start_prebuilt)
         pre_layout.addWidget(self.prebuilt_btn)
+        self.delete_llamacpp_btn = QPushButton(
+            self._tr("llm_remove_installation", "🗑 llama.cpp'ı Temizle"))
+        self.delete_llamacpp_btn.clicked.connect(self.remove_llamacpp_installation)
+        pre_layout.addWidget(self.delete_llamacpp_btn)
         pre_box.addLayout(pre_layout)
         self.prebuilt_desc_label = QLabel(
             self._tr("llm_prebuilt_desc",
@@ -1243,6 +1249,73 @@ class LlamaCppManagerDialog(QDialog):
 
     # ---------------- Option B: Hazır ikili ----------------
 
+    def remove_llamacpp_installation(self):
+        """llama.cpp kaynak/build klasörünü ve manager binary'sini kaldır."""
+        workers = (self._build_worker, self._prebuilt_worker, self._dep_worker)
+        if any(worker is not None and worker.isRunning() for worker in workers):
+            QMessageBox.warning(
+                self,
+                self._tr("llm_remove_title", "llama.cpp Kurulumunu Sil"),
+                self._tr("llm_remove_busy",
+                         "Devam eden bir derleme/kurulum var. Önce işlemin "
+                         "tamamlanmasını veya Durdur düğmesini bekleyin."))
+            return
+
+        if self._server_running_func is not None:
+            try:
+                if self._server_running_func():
+                    QMessageBox.warning(
+                        self,
+                        self._tr("llm_remove_title", "llama.cpp Kurulumunu Sil"),
+                        self._tr("llm_remove_server_running",
+                                 "llama-server şu anda çalışıyor. Temizlemeden "
+                                 "önce sunucuyu durdurun."))
+                    return
+            except Exception:
+                pass
+
+        binary_path = os.path.join(LOCAL_BIN_DIR, BIN_NAME)
+        targets = [BUILD_ROOT, binary_path]
+        existing = [path for path in targets
+                    if os.path.lexists(path) or os.path.isdir(path)]
+        if not existing:
+            self._append_log(self._tr("llm_remove_none",
+                                      "ℹ️ Silinecek llama.cpp kurulumu bulunamadı."))
+            return
+
+        target_text = "\n".join(f"• {path}" for path in existing)
+        answer = QMessageBox.question(
+            self,
+            self._tr("llm_remove_title", "llama.cpp Kurulumunu Sil"),
+            self._tr("llm_remove_confirm",
+                     "Aşağıdaki llama.cpp dosyaları silinecek:\n\n{targets}\n\n"
+                     "~/.llamatray ayarları ve profilleri korunacaktır. Devam edilsin mi?")
+            .format(targets=target_text))
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        removed = []
+        errors = []
+        for path in existing:
+            try:
+                if os.path.isdir(path) and not os.path.islink(path):
+                    shutil.rmtree(path)
+                else:
+                    os.remove(path)
+                removed.append(path)
+            except Exception as exc:
+                errors.append(f"{path}: {exc}")
+
+        self.git_version_label.setText("—")
+        self.progress_bar.setValue(0)
+        if removed:
+            self._append_log(self._tr(
+                "llm_remove_done",
+                "✓ llama.cpp kaynakları ve kurulu llama-server temizlendi. "
+                "~/.llamatray korunmuştur."))
+        if errors:
+            self._append_log("⚠ Bazı dosyalar silinemedi: " + "; ".join(errors))
+
     def start_prebuilt(self):
         if self._prebuilt_worker is not None and self._prebuilt_worker.isRunning():
             return
@@ -1290,6 +1363,8 @@ class LlamaCppManagerDialog(QDialog):
             self.stop_btn.setEnabled(any_running)
         else:
             self.stop_btn.setEnabled(busy or any_running)
+        if hasattr(self, "delete_llamacpp_btn"):
+            self.delete_llamacpp_btn.setEnabled(not any_running)
 
     def stop_all(self):
         for w in (self._build_worker, self._prebuilt_worker, self._dep_worker):
