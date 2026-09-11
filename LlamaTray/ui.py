@@ -99,6 +99,8 @@ class LlamaTray:
 
         # 5. Konfigürasyon yükle (self.log artık log_window'a yazıyor, widget'lar mevcut)
         self.load_config()
+        self.minimize_to_tray_checkbox.toggled.connect(
+            self._on_minimize_to_tray_toggled)
         self.model_selector.set_model_path(self.model_path)
         self.profile_manager.refresh_combobox()
 
@@ -549,6 +551,11 @@ class LlamaTray:
 
         orig_close = self.window.closeEvent
         def win_close(e):
+            # Ayar, pencere tepsiye gizlense bile kalıcı olsun.
+            try:
+                self.save_config()
+            except Exception:
+                pass
             # "Minimize to Tray on Close" etkinse ve tepsi kullanılabilirse
             # pencereyi kapatmak yerine gizle; sunucu çalışmaya devam eder.
             checkbox = getattr(self, 'minimize_to_tray_checkbox', None)
@@ -763,6 +770,10 @@ class LlamaTray:
         if ea is not None: self.advanced_settings.extra_params_lineedit.setText(str(ea))
         mp = data.get("mmproj_path")
         if mp is not None: self.advanced_settings.mmproj_lineedit.setText(str(mp))
+
+    def _on_minimize_to_tray_toggled(self, _checked):
+        """Tepsiye küçültme tercihini kullanıcı değiştirince hemen kaydet."""
+        self.save_config()
 
     def save_config(self):
         try:
