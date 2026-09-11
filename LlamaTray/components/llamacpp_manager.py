@@ -56,7 +56,7 @@ BUILD_DIR = os.path.join(BUILD_ROOT, "build")
 PM_INSTALL_CMD = {
     "apt": lambda pkgs: ["apt", "install", "-y"] + pkgs,
     "dnf": lambda pkgs: ["dnf", "install", "-y"] + pkgs,
-    "pacman": lambda pkgs: ["pacman", "-S", "--needed"] + pkgs,
+    "pacman": lambda pkgs: ["pacman", "-S", "--needed", "--noconfirm"] + pkgs,
     "zypper": lambda pkgs: ["zypper", "install", "-y"] + pkgs,
 }
 
@@ -93,7 +93,7 @@ BACKEND_DEPS = {
                     "vulkan-headers", "vulkan-loader-devel", "glslc",
                     "spirv-headers-devel"],
             "pacman": ["base-devel", "cmake", "git",
-                       "vulkan-devel", "vulkan-headers", "shaderc",
+                       "vulkan-headers", "vulkan-icd-loader", "shaderc",
                        "spirv-headers"],
             "zypper": ["gcc-c++", "make", "cmake", "git", "libvulkan-devel"],
         },
