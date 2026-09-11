@@ -67,7 +67,9 @@ def main():
         # XFCE/MATE/minimal VM oturumlarında xdg-desktop-portal tema backend'i
         # çalışmıyor veya kurulu olmayabiliyor; gtk3 backend'i portal kaydı
         # gerektirmeden normal Qt görünümünü korur.
-        os.environ.setdefault("QT_QPA_PLATFORMTHEME", "gtk3")
+        current_theme = os.environ.get("QT_QPA_PLATFORMTHEME", "").lower()
+        if current_theme in ("", "xdgdesktopportal"):
+            os.environ["QT_QPA_PLATFORMTHEME"] = "gtk3"
 
     # Wayland'da Qt bu değeri QApplication oluşturulurken portal'a kaydeder.
     # Sonradan setDesktopFileName() çağırmak aynı D-Bus bağlantısı için ikinci
