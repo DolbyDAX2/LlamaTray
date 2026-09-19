@@ -8,8 +8,9 @@ Kullanıcının llama-server'ı kolayca derleyip kurmasını sağlayan dialog:
   - Option A: kaynak derleme (git clone + cmake + build)
   - Option B: hazır release asset indirme (GitHub Releases)
   - Sonuç binary'i LlamaTray'in otomatik bulduğu konuma, build dizininden
-    bağımsız bir GERÇEK DOSYA olarak atomik şekilde yerleştirilir
-    (~/.local/bin/llama-server; symlink kullanılmaz — v1.5.3)
+    bağımsız bir runtime set olarak atomik şekilde yerleştirilir
+    (~/.local/lib/llamatray/llama.cpp + ~/.local/bin launcher;
+    symlink kullanılmaz, build dizininden bağımsız — v1.5.4)
 """
 
 import json
@@ -53,12 +54,16 @@ BACKEND_ORDER = ["vulkan", "cuda", "rocm", "sycl", "cpu"]
 BUILD_DIR = os.path.join(BUILD_ROOT, "build")
 
 # ---------------------------------------------------------------------------
-# Runtime binary kurulum / doğrulama yardımcıları (v1.5.3)
+# Runtime binary kurulum / doğrulama yardımcıları (v1.5.4)
 #
-# Kök neden düzeltmesi: ~/.local/bin/llama-server artık ~/llama.cpp/build
-# dizinine bağlı bir symlink değil, bağımsız bir gerçek dosyadır. Build/
-# cache temizliği runtime binary'yi bozamaz; cleanup build klasörünü
-# silebilir, kurulu binary bundan etkilenmez.
+# Kök neden düzeltmesi: build-tree binary'lerinin RUNPATH'i
+# ~/llama.cpp/build dizinine gömülüdür; binary'yi tek başına kopyalamak
+# bağımsızlık sağlamaz (shared library'ler build dizininden çözülür).
+# Bu yüzden binary + build'e ait NEEDED kütüphaneler birlikte LlamaTray'ın
+# özel runtime dizinine (~/.local/lib/llamatray/llama.cpp) kurulur ve
+# ~/.local/bin/llama-server atomik bir launcher script'i (gerçek dosya,
+# symlink değil) ile değiştirilir. Launcher LD_LIBRARY_PATH ile özel
+# dizini işaret eder; build klasörü silinse bile kurulum çalışır.
 # ---------------------------------------------------------------------------
 
 
@@ -92,6 +97,91 @@ def _is_elf_binary(path):
             return handle.read(4) == b"\x7fELF"
     except OSError:
         return False
+
+
+def _readelf_dynamic(binary_path):
+    """readelf -dW çıktısını döndür (araç yoksa / hata durumunda '')."""
+    try:
+        result = subprocess.run(["readelf", "-dW", binary_path],
+                                capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            return result.stdout or ""
+    except Exception:
+        pass
+    return ""
+
+
+def _needed_local_libs(binary_path, search_dirs):
+    """NEEDED listesinde olup search_dirs (build bin/lib) içinde bulunan
+    kütüphaneleri döndür: [(needed_name, abs_source_path), ...]
+
+    readelf çıktısı dil lokalizasyonuna bağlı olabilir; isimler bu yüzden
+    köşeli parantez içinden ([libfoo.so.1]) çıkarılır.
+    """
+    output = _readelf_dynamic(binary_path)
+    if not output:
+        return []
+    found = []
+    seen = set()
+    for name in re.findall(r"\(NEEDED\)[^\n\[]*\[([^\]]+)\]", output):
+        if name in seen:
+            continue
+        for directory in search_dirs:
+            candidate = os.path.join(directory, name)
+            if os.path.lexists(candidate):
+                # symlink ise gerçek dosyaya çöz (kopya dereference eder)
+                found.append((name, os.path.realpath(candidate)))
+                break
+    return found
+
+
+def _rpath_entries(binary_path):
+    """RUNPATH/RPATH değerlerini parçalara ayırıp döndür."""
+    output = _readelf_dynamic(binary_path)
+    if not output:
+        return []
+    entries = []
+    for value in re.findall(r"\((?:RUNPATH|RPATH)\)[^\n\[]*\[([^\]]*)\]", output):
+        entries.extend(part for part in value.split(":") if part)
+    return entries
+
+
+def _launcher_env(entry_path):
+    """Launcher script'inden (lib_dirs, runtime_bin) çıkar; okunamıyorsa None.
+
+    Option A ve Option B launcher formatı:
+      #!/bin/sh
+      export LD_LIBRARY_PATH='/a:/b'${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+      exec '/path/llama-server' "$@"
+    """
+    try:
+        with open(entry_path, "r", encoding="utf-8", errors="replace") as handle:
+            content = handle.read(4096)
+    except OSError:
+        return None
+    if not content.startswith("#!"):
+        return None
+    lib_dirs = []
+    # Token '$' harfinde durur: satir sonundaki ${LD_LIBRARY_PATH:+:...}
+    # suffix'i yakalanmaz (yalnizca quoted/bare path degeri isteniyor).
+    lib_match = re.search(r"^export\s+LD_LIBRARY_PATH=([^\s$]+)", content,
+                          re.MULTILINE)
+    if lib_match:
+        try:
+            quoted = shlex.split(lib_match.group(1))[0]
+        except ValueError:
+            quoted = lib_match.group(1).strip("'\"")
+        lib_dirs = [d for d in quoted.split(":") if d]
+    bin_match = re.search(r'^exec\s+(.+?)\s+"\$@"', content, re.MULTILINE)
+    if not bin_match:
+        return None
+    try:
+        runtime_bin = shlex.split(bin_match.group(1))[0]
+    except ValueError:
+        return None
+    if not os.path.isabs(runtime_bin):
+        return None
+    return lib_dirs, os.path.normpath(runtime_bin)
 
 
 def atomic_install_binary(src, dst):
@@ -136,6 +226,80 @@ def atomic_install_binary(src, dst):
     return dst
 
 
+def _runtime_libs_healthy(runtime_bin, lib_dirs):
+    """ldd ile (launcher'ın LD_LIBRARY_PATH'ini simüle ederek) doğrula:
+      - 'not found' olan kütüphane yok
+      - hiçbir NEEDED kütüphane build dizininden çözülüyor değil
+
+    Döndürülen (ok, [hata mesajları]) kurulumun build dizininden bağımsız
+    olup olmadığını söyler.
+    """
+    env = dict(os.environ)
+    existing = env.get("LD_LIBRARY_PATH", "")
+    prefix = ":".join(d for d in lib_dirs if d)
+    env["LD_LIBRARY_PATH"] = ((prefix + ":" + existing).strip(":")
+                              if prefix else existing)
+    try:
+        result = subprocess.run(["ldd", runtime_bin], capture_output=True,
+                                text=True, timeout=30, env=env)
+        if result.returncode != 0:
+            return False, [f"ldd exit code {result.returncode} ile çıktı"]
+    except Exception as exc:
+        return False, [f"ldd çalıştırılamadı: {exc}"]
+    failures = []
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if "not found" in line:
+            failures.append("eksik kütüphane: " + line)
+            continue
+        match = re.match(r"(\S+)\s+=>\s+(\S+)", line)
+        if not match:
+            continue
+        name, resolved = match.groups()
+        if resolved.startswith(BUILD_ROOT + os.sep):
+            failures.append(
+                f"{name} hâlâ build dizininden çözülüyor: {resolved}")
+    return (not failures), failures
+
+
+def _find_build_source():
+    """Build ağacındaki derlenmiş llama-server'ı bul; yoksa None."""
+    for candidate in (os.path.join(BUILD_BIN_DIR, BIN_NAME),
+                      os.path.join(BUILD_DIR, BIN_NAME)):
+        if (os.path.isfile(candidate) and not os.path.islink(candidate)
+                and os.access(candidate, os.X_OK)):
+            return candidate
+    return None
+
+
+def _write_launcher_atomic(entry_path, runtime_bin, lib_dirs):
+    """Entry point launcher'ını atomik şekilde yaz (temp + os.replace).
+
+    Başarılıysa entry yolunu, değilse None döndürür. Symlink kullanılmaz.
+    """
+    lib_path = ":".join(sorted(set(d for d in lib_dirs if d)))
+    script = ("#!/bin/sh\n"
+              f"export LD_LIBRARY_PATH={shlex.quote(lib_path)}"
+              "${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\n"
+              f"exec {shlex.quote(runtime_bin)} \"$@\"\n")
+    try:
+        entry_dir = os.path.dirname(entry_path) or "."
+        os.makedirs(entry_dir, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(prefix=".llama-server-", suffix=".tmp",
+                                        dir=entry_dir)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(script)
+        os.chmod(tmp_path, 0o755)
+        os.replace(tmp_path, entry_path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except (OSError, UnboundLocalError):
+            pass
+        return None
+    return entry_path
+
+
 def verify_llama_server_binary(path):
     """Kurulum sonrası doğrulama listesi; (ok, [hata mesajları]) döndürür.
 
@@ -169,19 +333,187 @@ def verify_llama_server_binary(path):
     return (not failures), failures
 
 
-def ensure_standalone_runtime_binary(log_func=None):
-    """Kurulmuş ~/.local/bin/llama-server'ı build dizininden bağımsızlaştır.
+def install_runtime_set(src_bin, log_func=None):
+    """llama-server + build'e ait runtime kütüphanelerini LlamaTray'ın özel
+    runtime dizinine (~/.local/lib/llamatray/llama.cpp) kur ve
+    ~/.local/bin/llama-server'ı atomik launcher ile değiştir.
 
-    - Hedef zaten gerçek dosyaysa (binary veya Option B launcher script'i)
-      olduğu gibi KORUNUR; dokunulmaz.
-    - Hedef bir symlink ise ve hedefi ~/llama.cpp altına çözülen bir
-      dosyaysa:
-        * kaynak binary mevcutsa -> gerçek dosya olarak atomik kopyala
-          (upgrade; cleanup artık onu bozamaz)
-        * kaynak binary yoksa (broken symlink) -> dokunma; build/install
-          işlemi sırasında gerçek binary ile değiştirilecek.
-    - Dışarıdaki (~/llama.cpp dışı) symlink'ler başka kurulumlara ait
-      sayılır, değiştirilmez.
+    Neden: build-tree binary'lerinin RUNPATH'i ~/llama.cpp/build dizinine
+    gömülüdür; binary tek başına kopyalanırsa shared library'ler build
+    dizininden çözülür ve cleanup kurulumu bozar. Binary + NEEDED local
+    kütüphaneler birlikte özel dizine konur, launcher da LD_LIBRARY_PATH
+    ile bu dizini işaret eder (LD_LIBRARY_PATH, RUNPATH'ten önceliklidir).
+
+    İşlem sırası (atomic):
+      1. staging dizinine binary + kütüphaneleri kopyala
+      2. staging üzerinde doğrula (ELF + ldd: eksik yok, build bağımlılığı yok)
+      3. staging'i os.replace ile runtime dizini olarak değiştir
+      4. launcher'ı temp + os.replace ile atomik yaz
+      5. verify_installed_entry ile uçtan uca doğrula
+
+    Başarılıysa entry point yolunu, değilse None döndürür.
+    """
+    def _log(message):
+        if log_func is not None:
+            log_func(message)
+
+    search_dirs = [BUILD_BIN_DIR, os.path.join(BUILD_ROOT, "build", "lib"),
+                   BUILD_DIR]
+    local_libs = _needed_local_libs(src_bin, search_dirs)
+    stage = PREBUILT_INSTALL_DIR + ".new"
+    if os.path.lexists(stage):
+        shutil.rmtree(stage, ignore_errors=True)
+    try:
+        os.makedirs(stage, exist_ok=True)
+        staged_bin = os.path.join(stage, BIN_NAME)
+        shutil.copy2(src_bin, staged_bin)
+        os.chmod(staged_bin, 0o755)
+        for name, real_path in local_libs:
+            staged_lib = os.path.join(stage, name)
+            shutil.copy2(real_path, staged_lib)
+            os.chmod(staged_lib, 0o755)
+    except Exception as exc:
+        shutil.rmtree(stage, ignore_errors=True)
+        _log(f"⚠ Runtime kütüphaneleri kopyalanamadı: {exc}")
+        return None
+
+    # Staging üzerinde doğrula (özel dizin = tek çözüm kaynağı olmalı).
+    staged_bin = os.path.join(stage, BIN_NAME)
+    if not _is_elf_binary(staged_bin):
+        shutil.rmtree(stage, ignore_errors=True)
+        _log("⚠ Derlenen binary geçerli ELF değil; kurulum iptal edildi.")
+        return None
+    ok, failures = _runtime_libs_healthy(staged_bin, [stage])
+    if not ok:
+        shutil.rmtree(stage, ignore_errors=True)
+        _log("⚠ Runtime set doğrulaması geçmedi: " + "; ".join(failures))
+        return None
+
+    # Eski runtime dizinini değiştir (aynı dosya sisteminde atomik swap).
+    try:
+        if os.path.lexists(PREBUILT_INSTALL_DIR):
+            shutil.rmtree(PREBUILT_INSTALL_DIR, ignore_errors=True)
+        os.replace(stage, PREBUILT_INSTALL_DIR)
+    except Exception as exc:
+        shutil.rmtree(stage, ignore_errors=True)
+        _log(f"⚠ Runtime dizini kurulamadı: {exc}")
+        return None
+
+    entry = os.path.join(LOCAL_BIN_DIR, BIN_NAME)
+    runtime_bin = os.path.join(PREBUILT_INSTALL_DIR, BIN_NAME)
+    if _write_launcher_atomic(entry, runtime_bin,
+                              [PREBUILT_INSTALL_DIR]) is None:
+        _log(f"⚠ Launcher yazılamadı: {entry}")
+        return None
+
+    ok, failures = verify_installed_entry()
+    if not ok:
+        _log("⚠ Kurulu runtime set doğrulanamadı: " + "; ".join(failures))
+        return None
+    _log(f"✓ Runtime set kuruldu: {PREBUILT_INSTALL_DIR} "
+         f"(binary + {len(local_libs)} kütüphane)")
+    _log(f"✓ Entry point (launcher, symlink değil): {entry}")
+    return entry
+
+
+def verify_installed_entry(log_func=None):
+    """Kurulmuş ~/.local/bin/llama-server'ın build dizininden BAĞIMSIZ ve
+    çalışır durumda olduğunu uçtan uca doğrula; sonuç log'a yazılır.
+
+    Kontroller:
+      1. entry point mevcut, gerçek dosya (symlink değil), executable
+      2. launcher ise: runtime binary mevcut + ELF;
+         ELF ise: RUNPATH build dizinine bağlı değil
+      3. tüm kütüphaneler çözülüyor ('not found' yok, build dizinine
+         çözülen yok)
+      4. 'llama-server --help' başarıyla çalışıyor (tam kütüphane yükleme)
+
+    Döndürülen (ok, [hata mesajları]).
+    """
+    def _log(message):
+        if log_func is not None:
+            log_func(message)
+
+    entry = os.path.join(LOCAL_BIN_DIR, BIN_NAME)
+    if not os.path.lexists(entry):
+        return False, ["kurulu llama-server yok"]
+    failures = []
+    if os.path.islink(entry):
+        failures.append("entry point symlink (launcher/gerçek dosya olmalı)")
+        _log("⚠ Kurulu llama-server hâlâ symlink; build/install ile bağımsız "
+             "runtime set'e yükseltilmeli.")
+        return False, failures
+    if not os.path.isfile(entry) or not os.access(entry, os.X_OK):
+        failures.append("entry point çalıştırılabilir değil")
+        _log("⚠ Kurulu llama-server çalıştırılabilir değil: "
+             + "; ".join(failures))
+        return False, failures
+
+    runtime_bin = None
+    lib_dirs = []
+    try:
+        with open(entry, "rb") as handle:
+            head = handle.read(2)
+    except OSError:
+        head = b""
+    if head == b"#!":
+        parsed = _launcher_env(entry)
+        if not parsed:
+            failures.append("launcher okunamadı")
+        else:
+            lib_dirs, runtime_bin = parsed
+            if not runtime_bin or not os.path.exists(runtime_bin):
+                failures.append("launcher'ın runtime binary'si eksik")
+            elif not os.access(runtime_bin, os.X_OK):
+                failures.append("runtime binary çalıştırılabilir değil")
+            elif not _is_elf_binary(runtime_bin):
+                failures.append("runtime binary geçerli ELF değil")
+    else:
+        runtime_bin = entry
+        if not _is_elf_binary(entry):
+            failures.append("entry point geçerli ELF değil")
+        else:
+            build_rpaths = [p for p in _rpath_entries(entry)
+                            if p.startswith(BUILD_ROOT + os.sep)]
+            if build_rpaths:
+                failures.append("RUNPATH build dizinine bağlı: "
+                                + ", ".join(build_rpaths))
+
+    if not failures:
+        ok, lib_failures = _runtime_libs_healthy(runtime_bin, lib_dirs)
+        failures.extend(lib_failures)
+    if not failures:
+        try:
+            result = subprocess.run([entry, "--help"], capture_output=True,
+                                    timeout=20)
+            if result.returncode != 0:
+                failures.append(f"'--help' exit code {result.returncode} "
+                                f"ile çıktı")
+        except Exception as exc:
+            failures.append(f"'--help' çalıştırılamadı: {exc}")
+
+    if failures:
+        _log("⚠ Kurulu llama-server doğrulaması FAIL: "
+             + "; ".join(failures))
+    else:
+        _log("✓ Kurulu llama-server doğrulaması PASS (build dizininden "
+             "bağımsız, tüm kütüphaneler çözülüyor, '--help' başarılı)")
+    return (not failures), failures
+
+
+def ensure_standalone_runtime_binary(log_func=None):
+    """Kurulmuş ~/.local/bin/llama-server'ı build dizininden bağımsız ve
+    sağlıklı hale getir.
+
+    Durumlar:
+      - hedef yok -> dokunma (ilk kurulum build/install ile gelir)
+      - harici (~/llama.cpp dışı) symlink -> KORUNUR
+      - mevcut kurulum sağlıklıysa (launcher + özel runtime dizini, ya da
+        tam bağımsız ELF) -> KORUNUR
+      - sağlıksız/bağımlıysa (build içine çözülen symlink, RUNPATH'i build
+        dizinine bağlı ELF, eksik kütüphaneli launcher) ve build ağacında
+        kaynak varsa -> bağımsız runtime set olarak yeniden kurulur (atomic)
+      - sağlıksız ama kaynak yoksa -> uyarı; build/install düzeltecek.
 
     Sonuç: döndürülen yol kullanılıyorsa o yoldur, değilse None.
     """
@@ -192,38 +524,38 @@ def ensure_standalone_runtime_binary(log_func=None):
     dst = os.path.join(LOCAL_BIN_DIR, BIN_NAME)
     if not os.path.lexists(dst):
         return None
-    if not os.path.islink(dst):
-        # Zaten gerçek dosya (veya Option B launcher script'i); koru.
-        return dst if os.access(dst, os.X_OK) else None
 
-    try:
-        raw_target = os.readlink(dst)
-    except OSError:
-        return None
-    resolved = (raw_target if os.path.isabs(raw_target)
-                else os.path.normpath(os.path.join(LOCAL_BIN_DIR, raw_target)))
-    if not (resolved == BUILD_ROOT
-            or resolved.startswith(BUILD_ROOT + os.sep)):
-        return dst  # harici symlink; başka kurulumun işine karışma
+    # Harici (~/llama.cpp dışı) symlink: başka kuruluuma ait, dokunma.
+    if os.path.islink(dst):
+        try:
+            raw_target = os.readlink(dst)
+        except OSError:
+            return None
+        resolved = (raw_target if os.path.isabs(raw_target)
+                    else os.path.normpath(
+                        os.path.join(LOCAL_BIN_DIR, raw_target)))
+        if not (resolved == BUILD_ROOT
+                or resolved.startswith(BUILD_ROOT + os.sep)):
+            return dst
 
-    source = None
-    for candidate in (os.path.join(BUILD_BIN_DIR, BIN_NAME),
-                      os.path.join(BUILD_DIR, BIN_NAME)):
-        if (os.path.isfile(candidate) and not os.path.islink(candidate)
-                and os.access(candidate, os.X_OK)):
-            source = candidate
-            break
+    # Mevcut kurulum sağlıklı mı? (launcher veya bağımsız ELF)
+    ok, _failures = verify_installed_entry()
+    if ok:
+        return dst
+
+    source = _find_build_source()
     if source is None:
-        _log(f"⚠ Kurulu llama-server kırık bir symlink ({dst}); "
-             f"build/install sırasında gerçek binary ile değiştirilecek.")
+        _log("⚠ Kurulu llama-server sağlıksız/bağımlı ve build ağacında "
+             "kaynak binary yok; build/install sırasında bağımsız runtime "
+             "set olarak düzeltilecek.")
         return None
 
-    installed = atomic_install_binary(source, dst)
+    _log("✓ Kurulu llama-server bağımsız runtime set olarak "
+         "güncelleniyor...")
+    installed = install_runtime_set(source, log_func=_log)
     if installed is not None:
-        _log("✓ Kurulu llama-server build dizininden bağımsız gerçek dosya "
-             f"olarak güvence altına alındı: {installed}")
         return installed
-    _log(f"⚠ Kurulu llama-server korunamadı: {dst}")
+    _log(f"⚠ Kurulu llama-server güncellenemedi: {dst}")
     return None
 
 # package manager -> install komutu şablonu (açık paket listesiyle).
@@ -570,12 +902,14 @@ class BuildWorker(QThread):
                 and os.access(path, os.X_OK))
 
     def _install_binary(self):
-        """Derlenen llama-server'ı ~/.local/bin'e GERÇEK DOSYA olarak atomik
-        şekilde kur (v1.5.3; symlink kullanılmaz).
+        """Derlenen llama-server'ı bağımsız runtime set olarak kur (v1.5.4).
 
-        Bu sayede kurulu binary, ~/llama.cpp/build dizininin yaşam döngüsünden
-        bağımsız kalır: build/cache temizliği runtime binary'yi bozamaz.
-        Eski (çalışan veya broken) symlink atomic replace ile değiştirilir.
+        Build-tree binary'lerinin RUNPATH'i ~/llama.cpp/build dizinine gömülü
+        olduğundan binary tek başına kopyalanmaz: binary + build'e ait NEEDED
+        kütüphaneler ~/.local/lib/llamatray/llama.cpp dizinine kopyalanır ve
+        ~/.local/bin/llama-server atomik launcher (gerçek dosya, symlink
+        değil) ile değiştirilir. Launcher LD_LIBRARY_PATH ile özel dizini
+        işaret eder; build dizini silinse bile kurulum çalışır.
         """
         src = os.path.join(BUILD_BIN_DIR, BIN_NAME)
         if not self._is_source_binary(src):
@@ -584,20 +918,21 @@ class BuildWorker(QThread):
                 src = alt
             else:
                 return None
-        dst = os.path.join(LOCAL_BIN_DIR, BIN_NAME)
-        installed = atomic_install_binary(src, dst)
+        installed = install_runtime_set(src, log_func=self.log_line.emit)
         if installed is None:
             self.log_line.emit(f"⚠ ~/.local/bin kurulumu başarısız: {src}")
             return None
-        # Kurulum sonrası doğrulama (mevcut / symlink değil / executable /
-        # geçerli ELF / --help başarılı).
-        ok, failures = verify_llama_server_binary(installed)
+        # Uçtan uca doğrulama: entry point gerçek dosya (launcher), runtime
+        # binary ELF, tüm kütüphaneler bağımsız dizinden çözülüyor,
+        # RUNPATH build dizinine bağlı değil, '--help' başarılı.
+        ok, failures = verify_installed_entry()
         if ok:
             self.log_line.emit(
-                "✓ Doğrulama PASS: dosya mevcut, symlink değil, executable, "
-                "geçerli ELF binary, '--help' başarılı")
+                "✓ Doğrulama PASS: entry point gerçek dosya (launcher), "
+                "runtime binary ELF, tüm kütüphaneler bağımsız dizinden "
+                "çözülüyor, '--help' başarılı")
         else:
-            self.log_line.emit("⚠ Kurulu binary doğrulaması başarısız: "
+            self.log_line.emit("⚠ Kurulu runtime set doğrulaması başarısız: "
                                + "; ".join(failures))
         return installed
 
@@ -1343,9 +1678,10 @@ class LlamaCppManagerDialog(QDialog):
         """Kurulmuş ~/.local/bin/llama-server'ın build dizininin yaşam
         döngüsünden bağımsız olduğundan emin ol.
 
-        Açılışta ve her build-cache temizliğinden önce çağrılır. Gerçek
-        dosyalar (binary veya Option B launcher) olduğu gibi korunur; sadece
-        build dizinine bağlı symlink'ler gerçek dosyaya yükseltilir.
+        Açılışta ve her build-cache temizliğinden önce çağrılır. Sağlıklı kurulumlar
+        (launcher + özel runtime dizini, ya da tam bağımsız ELF) olduğu gibi
+        korunur; build dizinine bağlı/bağlılık garantisi olmayan kurulumlar
+        kaynak varsa bağımsız runtime set olarak yeniden kurulur.
         """
         try:
             ensure_standalone_runtime_binary(log_func=self._append_log)
@@ -1355,11 +1691,16 @@ class LlamaCppManagerDialog(QDialog):
     def _clean_build_dir(self):
         """~/llama.cpp/build dizinini sil (önbellek temizliği).
 
-        v1.5.3: Runtime binary (~/.local/bin/llama-server) bağımsız bir gerçek
-        dosya olduğu için bu temizlik onu bozamaz. Eski symlink tabanlı
-        kurulumlar silme öncesinde gerçek dosyaya yükseltilir (güvenli
-        geçiş). Kullanıcının manuel 'llama.cpp'ı Temizle' işleminden BAĞIMSIZ
-        bir işlemdir: sadece build artefaktlarını kaldırır, kurulu binary'yi
+        v1.5.4: Kurulu runtime set (~/.local/bin launcher +
+        ~/.local/lib/llamatray/llama.cpp) build dizininden bağımsız olduğu
+        için bu temizlik onu bozamaz. Sıralama:
+          1. silme öncesi: bağlı/bağlılık garantisi olmayan kurulumlar
+             runtime set'e yükseltilir (güvenli geçiş)
+          2. build dizini silinir
+          3. silme sonrası: kurulu entry point'in hâlâ bağımsız ve çalışır
+             olduğu doğrulanır (gerekçe 8)
+        Kullanıcının manuel 'llama.cpp'ı Temizle' işleminden BAĞIMSIZ bir
+        işlemdir: sadece build artefaktlarını kaldırır, kurulu runtime set'i
         kaldırmaz.
         """
         self._ensure_runtime_binary_standalone()
@@ -1370,6 +1711,10 @@ class LlamaCppManagerDialog(QDialog):
             self._append_log(self._tr("llm_clean_build",
                                       "🧹 Eski CMake build önbelleği temizlendi:")
                              + f" {BUILD_DIR}")
+            # Cleanup sonrası doğrulama: kurulu entry point hâlâ bağımsız ve
+            # çalışır olmalı (kütüphaneler artık build dizininden çözülmez).
+            if os.path.lexists(os.path.join(LOCAL_BIN_DIR, BIN_NAME)):
+                verify_installed_entry(log_func=self._append_log)
         except Exception as e:
             self._append_log(f"⚠ Build dizini temizlenemedi: {e}")
 
