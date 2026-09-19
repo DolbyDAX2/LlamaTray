@@ -164,9 +164,17 @@ class LlamaServerManager(QProcess):
         """llama-server çalıştırılabilir dosyasını bul (cached)"""
         global _llama_server_cached_path
 
-        # Cache varsa kullan
+        # Cache varsa KULLAN ama doğrula (v1.5.3): path hâlâ mevcut ve
+        # executable mı? Eski bir kayıt (ör. build temizliğinden sonra
+        # kırılmış symlink) geri getirilmez; yeniden aranır. Kontrol
+        # gevşetilmez: dosya yoksa veya X_OK değilse cache geçersizdir.
         if _llama_server_cached_path is not None:
-            return _llama_server_cached_path
+            cached = _llama_server_cached_path
+            if os.path.isabs(cached) and os.path.lexists(cached) \
+                    and os.access(cached, os.X_OK):
+                return cached
+            self.log(f"⚠ Cached llama-server path no longer usable: {cached}; re-searching...")
+            _llama_server_cached_path = None
 
         llama_server_cmd = None
 
