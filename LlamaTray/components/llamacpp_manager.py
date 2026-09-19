@@ -7,8 +7,9 @@ Kullanıcının llama-server'ı kolayca derleyip kurmasını sağlayan dialog:
   - Dağıtım farkında bağımlılık kontrolü & kurulum (apt / dnf / pacman / zypper)
   - Option A: kaynak derleme (git clone + cmake + build)
   - Option B: hazır release asset indirme (GitHub Releases)
-  - Sonuç binary'i LlamaTray'in otomatik bulduğu konumlara yerleştirilir
-    (~/.local/bin/llama-server symlink/copy; ~/llama.cpp/build/bin)
+  - Sonuç binary'i LlamaTray'in otomatik bulduğu konuma, build dizininden
+    bağımsız bir GERÇEK DOSYA olarak atomik şekilde yerleştirilir
+    (~/.local/bin/llama-server; symlink kullanılmaz — v1.5.3)
 """
 
 import json
@@ -50,6 +51,180 @@ BACKENDS = {
 BACKEND_ORDER = ["vulkan", "cuda", "rocm", "sycl", "cpu"]
 
 BUILD_DIR = os.path.join(BUILD_ROOT, "build")
+
+# ---------------------------------------------------------------------------
+# Runtime binary kurulum / doğrulama yardımcıları (v1.5.3)
+#
+# Kök neden düzeltmesi: ~/.local/bin/llama-server artık ~/llama.cpp/build
+# dizinine bağlı bir symlink değil, bağımsız bir gerçek dosyadır. Build/
+# cache temizliği runtime binary'yi bozamaz; cleanup build klasörünü
+# silebilir, kurulu binary bundan etkilenmez.
+# ---------------------------------------------------------------------------
+
+
+def is_usable_llama_server(path):
+    """path'teki llama-server çalıştırılabilir durumda mı? (katı kontrol)
+
+    Broken symlink ASLA geçerli sayılmaz: hedef yoksa veya X_OK değilse
+    False döner. Symlink'in hedefi mevcut ve executable ise True.
+    """
+    if not os.path.lexists(path):
+        return False
+    try:
+        if os.path.islink(path) and not os.path.exists(path):
+            return False  # broken symbolic link
+        return os.path.isfile(path) and os.access(path, os.X_OK)
+    except OSError:
+        return False
+
+
+def _is_elf_binary(path):
+    """'file' çıktısıyla (araç yoksa magic-byte ile) geçerli ELF doğrula."""
+    try:
+        result = subprocess.run(["file", "--brief", path],
+                                capture_output=True, text=True, timeout=10)
+        if result.returncode == 0 and result.stdout.strip():
+            return "ELF" in result.stdout.upper()
+    except Exception:
+        pass
+    try:
+        with open(path, "rb") as handle:
+            return handle.read(4) == b"\x7fELF"
+    except OSError:
+        return False
+
+
+def atomic_install_binary(src, dst):
+    """src binary'ini dst'ye GERÇEK DOSYA olarak atomik şekilde kur.
+
+    İşlem sırası (atomic install/copy):
+      1. Aynı dizinde geçici dosyaya kopyala
+      2. Geçici kopyanın executable + geçerli ELF olduğunu doğrula
+      3. os.replace ile hedefin üzerine atomik değiştir
+         (eski symlink — çalışan veya broken — da bu şekilde değişir)
+
+    Başarılıysa dst yolunu, herhangi bir adımda hata olursa None döndürür.
+    """
+    if os.path.islink(src) or not os.path.isfile(src):
+        return None
+    if not os.access(src, os.X_OK):
+        return None
+    try:
+        dst_dir = os.path.dirname(dst) or "."
+        os.makedirs(dst_dir, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(prefix=".llama-server-",
+                                        suffix=".tmp", dir=dst_dir)
+        try:
+            with os.fdopen(fd, "wb") as out, open(src, "rb") as inn:
+                shutil.copyfileobj(inn, out, length=1024 * 1024)
+            os.chmod(tmp_path, 0o755)
+            if not os.access(tmp_path, os.X_OK):
+                raise OSError("Geçici kopya çalıştırılabilir değil.")
+            if not _is_elf_binary(tmp_path):
+                raise OSError("Kopyalanan dosya geçerli bir ELF binary değil.")
+            # Atomic replace: hedef symlink ise de sadece bağlantı değişir,
+            # link'in hedefine (build dizinine) dokunulmaz.
+            os.replace(tmp_path, dst)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            return None
+    except Exception:
+        return None
+    return dst
+
+
+def verify_llama_server_binary(path):
+    """Kurulum sonrası doğrulama listesi; (ok, [hata mesajları]) döndürür.
+
+    Kontroller:
+      1. hedef dosya mevcut
+      2. symlink değil (gerçek dosya)
+      3. executable
+      4. 'file' çıktısı geçerli ELF binary
+      5. 'llama-server --help' başarıyla çalışıyor
+    """
+    failures = []
+    if not os.path.lexists(path):
+        return False, ["hedef dosya mevcut değil"]
+    if os.path.islink(path):
+        failures.append("symlink (gerçek dosya olmalı)")
+    elif not os.path.isfile(path) or not os.path.exists(path):
+        failures.append("dosya bulunamadı/geçersiz")
+    if not failures and not os.access(path, os.X_OK):
+        failures.append("executable değil")
+    if not failures and not _is_elf_binary(path):
+        failures.append("'file' çıktısı geçerli ELF binary değil")
+    if not failures:
+        try:
+            result = subprocess.run([path, "--help"], capture_output=True,
+                                    timeout=15)
+            if result.returncode != 0:
+                failures.append(
+                    f"'--help' exit code {result.returncode} ile çıktı")
+        except Exception as exc:
+            failures.append(f"'--help' çalıştırılamadı: {exc}")
+    return (not failures), failures
+
+
+def ensure_standalone_runtime_binary(log_func=None):
+    """Kurulmuş ~/.local/bin/llama-server'ı build dizininden bağımsızlaştır.
+
+    - Hedef zaten gerçek dosyaysa (binary veya Option B launcher script'i)
+      olduğu gibi KORUNUR; dokunulmaz.
+    - Hedef bir symlink ise ve hedefi ~/llama.cpp altına çözülen bir
+      dosyaysa:
+        * kaynak binary mevcutsa -> gerçek dosya olarak atomik kopyala
+          (upgrade; cleanup artık onu bozamaz)
+        * kaynak binary yoksa (broken symlink) -> dokunma; build/install
+          işlemi sırasında gerçek binary ile değiştirilecek.
+    - Dışarıdaki (~/llama.cpp dışı) symlink'ler başka kurulumlara ait
+      sayılır, değiştirilmez.
+
+    Sonuç: döndürülen yol kullanılıyorsa o yoldur, değilse None.
+    """
+    def _log(message):
+        if log_func is not None:
+            log_func(message)
+
+    dst = os.path.join(LOCAL_BIN_DIR, BIN_NAME)
+    if not os.path.lexists(dst):
+        return None
+    if not os.path.islink(dst):
+        # Zaten gerçek dosya (veya Option B launcher script'i); koru.
+        return dst if os.access(dst, os.X_OK) else None
+
+    try:
+        raw_target = os.readlink(dst)
+    except OSError:
+        return None
+    resolved = (raw_target if os.path.isabs(raw_target)
+                else os.path.normpath(os.path.join(LOCAL_BIN_DIR, raw_target)))
+    if not (resolved == BUILD_ROOT
+            or resolved.startswith(BUILD_ROOT + os.sep)):
+        return dst  # harici symlink; başka kurulumun işine karışma
+
+    source = None
+    for candidate in (os.path.join(BUILD_BIN_DIR, BIN_NAME),
+                      os.path.join(BUILD_DIR, BIN_NAME)):
+        if (os.path.isfile(candidate) and not os.path.islink(candidate)
+                and os.access(candidate, os.X_OK)):
+            source = candidate
+            break
+    if source is None:
+        _log(f"⚠ Kurulu llama-server kırık bir symlink ({dst}); "
+             f"build/install sırasında gerçek binary ile değiştirilecek.")
+        return None
+
+    installed = atomic_install_binary(source, dst)
+    if installed is not None:
+        _log("✓ Kurulu llama-server build dizininden bağımsız gerçek dosya "
+             f"olarak güvence altına alındı: {installed}")
+        return installed
+    _log(f"⚠ Kurulu llama-server korunamadı: {dst}")
+    return None
 
 # package manager -> install komutu şablonu (açık paket listesiyle).
 # Çalıştırma pkexec ile yapılır (grafiksel yetkilendirme); pkexec yoksa sudo.
@@ -388,29 +563,43 @@ class BuildWorker(QThread):
         self.progress.emit(done_pct)
         return True
 
+    @staticmethod
+    def _is_source_binary(path):
+        """Derleme çıktısı geçerli bir kaynak binary mi? (gerçek dosya + exec)"""
+        return (os.path.isfile(path) and not os.path.islink(path)
+                and os.access(path, os.X_OK))
+
     def _install_binary(self):
-        """Derlenen llama-server'ı ~/.local/bin'e symlink/copy olarak kur."""
+        """Derlenen llama-server'ı ~/.local/bin'e GERÇEK DOSYA olarak atomik
+        şekilde kur (v1.5.3; symlink kullanılmaz).
+
+        Bu sayede kurulu binary, ~/llama.cpp/build dizininin yaşam döngüsünden
+        bağımsız kalır: build/cache temizliği runtime binary'yi bozamaz.
+        Eski (çalışan veya broken) symlink atomic replace ile değiştirilir.
+        """
         src = os.path.join(BUILD_BIN_DIR, BIN_NAME)
-        if not (os.path.exists(src) and os.access(src, os.X_OK)):
-            alt = os.path.join(BUILD_ROOT, "build", BIN_NAME)
-            if os.path.exists(alt) and os.access(alt, os.X_OK):
+        if not self._is_source_binary(src):
+            alt = os.path.join(BUILD_DIR, BIN_NAME)
+            if self._is_source_binary(alt):
                 src = alt
             else:
                 return None
-        try:
-            os.makedirs(LOCAL_BIN_DIR, exist_ok=True)
-            dst = os.path.join(LOCAL_BIN_DIR, BIN_NAME)
-            if os.path.lexists(dst):
-                os.remove(dst)
-            try:
-                os.symlink(src, dst)
-            except OSError:
-                shutil.copy2(src, dst)
-                os.chmod(dst, 0o755)
-            return dst
-        except Exception as e:
-            self.log_line.emit(f"⚠ ~/.local/bin kurulumu başarısız: {e}")
+        dst = os.path.join(LOCAL_BIN_DIR, BIN_NAME)
+        installed = atomic_install_binary(src, dst)
+        if installed is None:
+            self.log_line.emit(f"⚠ ~/.local/bin kurulumu başarısız: {src}")
             return None
+        # Kurulum sonrası doğrulama (mevcut / symlink değil / executable /
+        # geçerli ELF / --help başarılı).
+        ok, failures = verify_llama_server_binary(installed)
+        if ok:
+            self.log_line.emit(
+                "✓ Doğrulama PASS: dosya mevcut, symlink değil, executable, "
+                "geçerli ELF binary, '--help' başarılı")
+        else:
+            self.log_line.emit("⚠ Kurulu binary doğrulaması başarısız: "
+                               + "; ".join(failures))
+        return installed
 
     def _report_version(self):
         """Sürüm/commit takibi: git describe --tags --always (UI + log)."""
@@ -723,6 +912,32 @@ class PrebuiltWorker(QThread):
                 "${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\n"
                 f"exec {shlex.quote(runtime_bin)} \"$@\"\n")
         os.chmod(launcher, 0o755)
+
+        # Kurulum sonrası doğrulama (v1.5.3): launcher gerçek dosya +
+        # executable, runtime binary geçerli ELF ve '--help' başarılı.
+        failures = []
+        if os.path.islink(launcher) or not os.path.isfile(launcher):
+            failures.append("launcher symlink/geçersiz dosya")
+        elif not os.access(launcher, os.X_OK):
+            failures.append("launcher executable değil")
+        if not _is_elf_binary(runtime_bin):
+            failures.append("runtime binary geçerli ELF değil")
+        if not failures:
+            try:
+                result = subprocess.run([launcher, "--help"],
+                                        capture_output=True, timeout=15)
+                if result.returncode != 0:
+                    failures.append(
+                        f"'--help' exit code {result.returncode} ile çıktı")
+            except Exception as exc:
+                failures.append(f"'--help' çalıştırılamadı: {exc}")
+        if failures:
+            self.log_line.emit("⚠ Hazır ikili doğrulaması başarısız: "
+                               + "; ".join(failures))
+        else:
+            self.log_line.emit(
+                "✓ Doğrulama PASS: launcher gerçek dosya, executable; "
+                "runtime binary geçerli ELF, '--help' başarılı")
         return launcher
 
     def _extract(self, archive_path, dest_dir):
@@ -990,6 +1205,12 @@ class LlamaCppManagerDialog(QDialog):
         layout.addLayout(log_row)
         layout.addWidget(self.log_view)
 
+        # v1.5.3: Manager açılırken kurulu runtime binary'yi KORU.
+        # Eski symlink tabanlı kurulumlar gerçek dosyaya yükseltilir; böylece
+        # backend seçimi tetiklediği build-cache temizliği ~/.local/bin/
+        # llama-server'ı bozamaz (çalışan kurulum açılıştan etkilenmez).
+        self._ensure_runtime_binary_standalone()
+
         self.refresh_dep_status()
         self._append_log(self._tr("llm_intro",
                                   "Not: Derleme birkaç dakika sürebilir. İşlemlerin"
@@ -1118,8 +1339,30 @@ class LlamaCppManagerDialog(QDialog):
         self.refresh_dep_status()
         self._clean_build_dir()
 
+    def _ensure_runtime_binary_standalone(self):
+        """Kurulmuş ~/.local/bin/llama-server'ın build dizininin yaşam
+        döngüsünden bağımsız olduğundan emin ol.
+
+        Açılışta ve her build-cache temizliğinden önce çağrılır. Gerçek
+        dosyalar (binary veya Option B launcher) olduğu gibi korunur; sadece
+        build dizinine bağlı symlink'ler gerçek dosyaya yükseltilir.
+        """
+        try:
+            ensure_standalone_runtime_binary(log_func=self._append_log)
+        except Exception as e:
+            self._append_log(f"⚠ Kurulu llama-server denetimi yapılamadı: {e}")
+
     def _clean_build_dir(self):
-        """~/llama.cpp/build dizinini sil (önbellek temizliği)."""
+        """~/llama.cpp/build dizinini sil (önbellek temizliği).
+
+        v1.5.3: Runtime binary (~/.local/bin/llama-server) bağımsız bir gerçek
+        dosya olduğu için bu temizlik onu bozamaz. Eski symlink tabanlı
+        kurulumlar silme öncesinde gerçek dosyaya yükseltilir (güvenli
+        geçiş). Kullanıcının manuel 'llama.cpp'ı Temizle' işleminden BAĞIMSIZ
+        bir işlemdir: sadece build artefaktlarını kaldırır, kurulu binary'yi
+        kaldırmaz.
+        """
+        self._ensure_runtime_binary_standalone()
         if not os.path.isdir(BUILD_DIR):
             return
         try:
