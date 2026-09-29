@@ -4,12 +4,36 @@ CPU, RAM, GPU ve VRAM kullanımını gösterir.
 BaseWidget'dan türetilir.
 """
 
+from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QLabel, QProgressBar, QVBoxLayout
+
+
+class MonitorPollWorker(QThread):
+    """Sistem kaynaklarını arka planda sorgulayan iş parçacığı."""
+    metrics_ready = pyqtSignal(dict)
+
+    def __init__(self, system_monitor, parent=None):
+        super().__init__(parent)
+        self.system_monitor = system_monitor
+
+    def run(self):
+        try:
+            metrics = {
+                'cpu': self.system_monitor.get_cpu_usage(),
+                'ram_pct': self.system_monitor.get_ram_usage(),
+                'ram_info': self.system_monitor.get_ram_info(),
+                'gpu': self.system_monitor.get_gpu_usage() if self.system_monitor.gpu_available else None,
+                'vram_pct': self.system_monitor.get_vram_usage() if self.system_monitor.vram_available else None,
+                'vram_info': self.system_monitor.get_vram_info() if self.system_monitor.vram_available else None,
+            }
+            self.metrics_ready.emit(metrics)
+        except Exception:
+            pass
 
 
 class SystemMonitorWidget(QFrame):
     """Sistem kaynaklarını (CPU, RAM, GPU, VRAM) gösteren widget"""
-    
+
     def __init__(self, system_monitor, translations_func=None):
         """
         Args:
@@ -19,7 +43,8 @@ class SystemMonitorWidget(QFrame):
         super().__init__()
         self.system_monitor = system_monitor
         self.translations_func = translations_func
-        
+        self._poll_worker = None
+
         self._init_ui()
     
     def _init_ui(self):
@@ -106,38 +131,47 @@ class SystemMonitorWidget(QFrame):
             self.vram_label.setText(self.get_translated("label_vram_not_supported", "VRAM: Not Supported"))
     
     def update_resources(self):
-        """Kaynak kullanımını güncelle"""
+        """Kaynak kullanımını arka planda asenkron sorgula (GUI bloke olmaz)."""
+        if self._poll_worker is not None and self._poll_worker.isRunning():
+            return  # Önceki okuma sürüyorsa birikmeyi önle
+
+        self._poll_worker = MonitorPollWorker(self.system_monitor, self)
+        self._poll_worker.metrics_ready.connect(self._apply_metrics)
+        self._poll_worker.start()
+
+    def _apply_metrics(self, metrics):
+        """Toplanan metrikleri GUI öğelerine uygula (ana iş parçacığında çalışır)."""
         try:
-            cpu = self.system_monitor.get_cpu_usage()
+            cpu = metrics.get('cpu')
             if cpu is not None:
                 label_template = self.get_translated("label_cpu_usage", "CPU Usage: %0")
                 self.cpu_label.setText(label_template.replace("%0", str(cpu)))
                 self.cpu_progress.setValue(int(cpu))
-            
-            ram_pct = self.system_monitor.get_ram_usage()
-            ram_info = self.system_monitor.get_ram_info()
+
+            ram_pct = metrics.get('ram_pct')
+            ram_info = metrics.get('ram_info')
             if ram_pct is not None and ram_info:
                 used_gb, total_gb = ram_info
                 label_template = self.get_translated("label_ram_usage", "RAM Usage: %0 GB / %1 GB")
                 self.ram_label.setText(label_template.replace("%0", f"{used_gb:.1f}").replace("%1", f"{total_gb:.1f}"))
                 self.ram_progress.setValue(int(ram_pct))
-            
-            # GPU ve VRAM güncellemesi (opsiyonel)
+
+            # GPU ve VRAM güncellemesi
             if self.system_monitor.gpu_available:
-                gpu = self.system_monitor.get_gpu_usage()
+                gpu = metrics.get('gpu')
                 if gpu is not None:
                     label_template = self.get_translated("label_gpu_usage", "GPU Usage: %0")
                     self.gpu_label.setText(label_template.replace("%0", str(int(gpu))))
                     self.gpu_progress.setValue(int(gpu))
-            
+
             if self.system_monitor.vram_available:
-                vram_pct = self.system_monitor.get_vram_usage()
-                vram_info = self.system_monitor.get_vram_info()
+                vram_pct = metrics.get('vram_pct')
+                vram_info = metrics.get('vram_info')
                 if vram_pct is not None and vram_info:
                     used_gb, total_gb = vram_info
                     label_template = self.get_translated("label_vram_usage", "VRAM Usage: %0 GB / %1 GB")
                     self.vram_label.setText(label_template.replace("%0", f"{used_gb:.1f}").replace("%1", f"{total_gb:.1f}"))
                     self.vram_progress.setValue(int(vram_pct))
-                    
+
         except Exception as e:
-            print(f"⚠ Resource update error: {e}")
+            print(f"⚠ Resource apply error: {e}")

@@ -7,6 +7,7 @@ import os
 import json
 from PyQt6.QtWidgets import (QGroupBox, QVBoxLayout, QHBoxLayout, QComboBox,
                               QPushButton, QMessageBox, QInputDialog)
+from ..ui_utils import save_json_atomic
 
 
 class ProfileManagerWidget(QGroupBox):
@@ -77,8 +78,7 @@ class ProfileManagerWidget(QGroupBox):
         if fn: return fn(profiles)
         pp = self.callbacks.get('get_profiles_path', lambda: "")
         try:
-            with open(pp, "w", encoding="utf-8") as f:
-                json.dump(profiles, f, indent=2, ensure_ascii=False)
+            save_json_atomic(pp, profiles, indent=2, ensure_ascii=False)
         except Exception as e: self._log(f"❌ Profiller kaydedilemedi: {e}")
 
     def refresh_combobox(self):

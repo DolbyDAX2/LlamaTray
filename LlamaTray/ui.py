@@ -12,8 +12,8 @@ from PyQt6.QtWidgets import (
     QGroupBox, QRadioButton, QLineEdit, QScrollArea, QCheckBox,
     QSizePolicy, QStyle
 )
-from PyQt6.QtGui import QIcon, QAction, QFontMetrics, QPainter, QPixmap, QImage
-from PyQt6.QtCore import QTimer, Qt, QSize
+from PyQt6.QtGui import QIcon, QAction, QFontMetrics, QPainter, QPixmap, QImage, QDesktopServices
+from PyQt6.QtCore import QTimer, Qt, QSize, QUrl
 
 
 class ElidedPushButton(QPushButton):
@@ -48,7 +48,8 @@ class ElidedPushButton(QPushButton):
 
 import LlamaTray.ui_utils as ui_utils
 from .ui_utils import (load_translations, get_icon_path,
-                       get_tray_icon_path)
+                       get_tray_icon_path, save_json_atomic,
+                       get_file_logger, get_log_file_path)
 from .version import VERSION_DISPLAY
 from .monitor import SystemMonitor
 from .server import LlamaServerManager
@@ -358,13 +359,52 @@ class LlamaTray:
             except Exception:
                 pass
 
+    def _show_log_context_menu(self, pos):
+        """Log alanı için sağ tık bağlam menüsü"""
+        menu = QMenu(self.log_window)
+        tr = self.get_translated
+
+        copy_action = menu.addAction(tr("log_menu_copy", "Kopyala"))
+        copy_all_action = menu.addAction(tr("log_menu_copy_all", "Tümünü Kopyala"))
+        menu.addSeparator()
+        clear_action = menu.addAction(tr("log_menu_clear", "Logları Temizle"))
+        open_log_file_action = menu.addAction(tr("log_menu_open_file", "Log Dosyasını Aç"))
+
+        action = menu.exec(self.log_window.mapToGlobal(pos))
+        if action == copy_action:
+            cursor = self.log_window.textCursor()
+            if cursor.hasSelection():
+                QApplication.clipboard().setText(cursor.selectedText())
+            else:
+                QApplication.clipboard().setText(self.log_window.toPlainText())
+        elif action == copy_all_action:
+            QApplication.clipboard().setText(self.log_window.toPlainText())
+        elif action == clear_action:
+            self.log_window.clear()
+        elif action == open_log_file_action:
+            log_file = get_log_file_path()
+            if os.path.exists(log_file):
+                QDesktopServices.openUrl(QUrl.fromLocalFile(log_file))
+            else:
+                log_dir = os.path.dirname(log_file)
+                if os.path.exists(log_dir):
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(log_dir))
+
     def _init_main_window(self):
         self.log_window = QTextEdit()
         self.log_window.setReadOnly(True)
         self.log_window.setFixedHeight(100)
+        self.log_window.document().setMaximumBlockCount(1000)
+        self.log_window.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.log_window.customContextMenuRequested.connect(self._show_log_context_menu)
         # Şimdi log metodunu tanımla (log_window oluşturulduktan sonra)
+        file_logger = get_file_logger()
         def _do_log(msg):
             self.log_window.append(msg)
+            try:
+                file_logger.info(msg)
+            except Exception:
+                pass
         self.log = _do_log
         tr = self.get_translated
         # server_manager'ın log_callback'ini gerçek log fonksiyonuna yönlendir
@@ -717,8 +757,7 @@ class LlamaTray:
 
     def save_profiles(self, profiles):
         try:
-            with open(self.get_profiles_path(), "w", encoding="utf-8") as f:
-                json.dump(profiles, f, indent=2, ensure_ascii=False)
+            save_json_atomic(self.get_profiles_path(), profiles, indent=2, ensure_ascii=False)
         except Exception as e: self.log(f"❌ Profiller kaydedilemedi: {e}")
 
     def get_current_form_values(self):
@@ -792,7 +831,7 @@ class LlamaTray:
                       "minimize_to_tray_on_close": (self.minimize_to_tray_checkbox.isChecked()
                                                     if hasattr(self, 'minimize_to_tray_checkbox') else False),
                       "language": self.current_language}
-            with open(cp, "w", encoding="utf-8") as f: json.dump(config, f, indent=2)
+            save_json_atomic(cp, config, indent=2)
             self.log(self.get_translated("log_config_saved", "✓ Ayarlar başarıyla kaydedildi."))
         except PermissionError: self.log("❌ Hata: Dosya yazma izni yok.")
         except OSError as e: self.log(f"❌ Hata: Disk hatası: {e}")

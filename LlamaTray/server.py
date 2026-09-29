@@ -9,6 +9,7 @@ import shlex
 import socket
 import time
 import shutil
+import threading
 from PyQt6.QtCore import QProcess, QProcessEnvironment, QThread, pyqtSignal, QEventLoop
 
 
@@ -94,6 +95,65 @@ class CleanupThread(QThread):
             time.sleep(0.5)
         # Hala meşgulse False sinyali gönder
         self.cleanup_finished.emit(False)
+
+
+def build_server_args(model_path="", gpu_layers=99, context_size=8192, port=8080,
+                      extra_params="", mmproj_path="", router_mode=False,
+                      models_dir="", no_models_autoload=True, jinja=True,
+                      host="127.0.0.1"):
+    """
+    llama-server için komut satırı argüman listesini oluşturur ve parametreleri doğrular.
+    Hatalı parametrelerde ValueError fırlatır.
+    """
+    # Context size doğrulama
+    try:
+        context_size = int(context_size)
+        if context_size < 512 or context_size > 1000000:
+            raise ValueError(f"Context size invalid ({context_size}). Must be between 512 and 1000000.")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Context size is not a number: {context_size}") from exc
+
+    # Port doğrulama
+    try:
+        port = int(port)
+        if not (1024 <= port <= 65535):
+            raise ValueError(f"Port invalid ({port}). Must be between 1024 and 65535.")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Port is not a valid number: {port}") from exc
+
+    if router_mode:
+        if not models_dir:
+            raise ValueError("Please select a models directory first.")
+        args = ["--models-dir", str(models_dir)]
+        if no_models_autoload:
+            args.append("--no-models-autoload")
+        if jinja:
+            args.append("--jinja")
+        args.extend(["--host", str(host), "--port", str(port)])
+        args.extend(["-ngl", str(gpu_layers), "--ctx-size", str(context_size)])
+    else:
+        if not model_path:
+            raise ValueError("Please select a model file first.")
+        args = ["-m", str(model_path)]
+        args.extend(["--n-gpu-layers", str(gpu_layers)])
+        args.extend(["--ctx-size", str(context_size)])
+        args.extend(["--port", str(port)])
+
+        if mmproj_path:
+            clean_mmproj = str(mmproj_path).strip()
+            if clean_mmproj:
+                args.extend(["--mmproj", clean_mmproj])
+
+    if extra_params:
+        clean_extra = str(extra_params).strip()
+        if clean_extra:
+            try:
+                extra_args = shlex.split(clean_extra)
+                args.extend(extra_args)
+            except ValueError as e:
+                raise ValueError(f"Could not parse extra parameters: {e}. E.g.: -t 8 --flash-attn") from e
+
+    return args
 
 
 # Cache: find_llama_server sonucu
@@ -255,19 +315,18 @@ class LlamaServerManager(QProcess):
             except Exception as e:
                 self.log(f"⚠ Could not check model size: {e}")
 
-        # Context size validation
+        # Context size validation & port validation
         try:
-            context_size = int(context_size)
-            if context_size < 512 or context_size > 1000000:
-                self.log(f"❌ Error: Context size invalid ({context_size}). Must be between 512 and 1000000.")
-                return False
-        except ValueError:
-            self.log(f"❌ Error: Context size is not a number: {context_size}")
-            return False
-
-        # Port validation
-        if not (1024 <= port <= 65535):
-            self.log(f"❌ Error: Port invalid ({port}). Must be between 1024 and 65535.")
+            build_server_args(
+                model_path=model_path, gpu_layers=gpu_layers,
+                context_size=context_size, port=port,
+                extra_params=extra_params, mmproj_path=mmproj_path,
+                router_mode=router_mode, models_dir=models_dir,
+                no_models_autoload=no_models_autoload, jinja=jinja,
+                host=self.host
+            )
+        except ValueError as exc:
+            self.log(f"❌ Error: {exc}")
             return False
 
         # Öncesi: Eski zombi süreçleri temizle (arka plan thread ile - UI bloke olmaz)
@@ -331,50 +390,38 @@ class LlamaServerManager(QProcess):
                 self.log(f"❌ Error: Error searching for '{llama_server_cmd}'.")
                 return False
 
-        # Komutu oluştur (_pending_start_params'ten oku)
+        # Komutu oluştur (build_server_args ile)
         model_path = p['model_path']
         gpu_layers = p['gpu_layers']
         context_size = p['context_size']
         extra_params = p['extra_params']
         mmproj_path = p['mmproj_path']
-
         router_mode = p['router_mode']
-        if router_mode:
-            args = ["--models-dir", p['models_dir']]
-            if p['no_models_autoload']:
-                args.append("--no-models-autoload")
-            if p['jinja']:
-                args.append("--jinja")
-            args.extend(["--host", self.host, "--port", str(port)])
-            args.extend(["-ngl", str(gpu_layers), "--ctx-size", str(context_size)])
-        else:
-            args = ["-m", model_path]
-            args.extend(["--n-gpu-layers", str(gpu_layers)])
-            args.extend(["--ctx-size", str(context_size)])
-            args.extend(["--port", str(port)])
 
-        # mmproj yalnızca tek model modunda eklenir
+        # mmproj yalnızca tek model modunda eklenir ve dosya kontrol edilir
         if not router_mode and mmproj_path:
             mmproj_path = mmproj_path.strip()
             if mmproj_path:
-                if os.path.exists(mmproj_path):
-                    args.extend(["--mmproj", mmproj_path])
-                    self.log(f"📁 mmproj file added: {mmproj_path}")
-                else:
+                if not os.path.exists(mmproj_path):
                     self.log(f"❌ Error: mmproj file not found: {mmproj_path}")
                     return False
+                self.log(f"📁 mmproj file added: {mmproj_path}")
 
-        # Ek parametreleri ekle - güvenli parsing
-        if extra_params:
-            extra_params = extra_params.strip()
-            if extra_params:
-                try:
-                    extra_args = shlex.split(extra_params)
-                    args.extend(extra_args)
-                    self.log(f"📝 Extra parameters added: {' '.join(extra_args)}")
-                except ValueError as e:
-                    self.log(f"❌ Error: Could not parse extra parameters: {e}. E.g.: -t 8 --flash-attn")
-                    return False
+        try:
+            args = build_server_args(
+                model_path=model_path, gpu_layers=gpu_layers,
+                context_size=context_size, port=port,
+                extra_params=extra_params, mmproj_path=mmproj_path,
+                router_mode=router_mode, models_dir=p['models_dir'],
+                no_models_autoload=p['no_models_autoload'], jinja=p['jinja'],
+                host=self.host
+            )
+        except ValueError as e:
+            self.log(f"❌ Error: {e}")
+            return False
+
+        if extra_params and extra_params.strip():
+            self.log(f"📝 Extra parameters added: {extra_params.strip()}")
 
         self.log(f"🚀 Starting server: {llama_server_cmd} {' '.join(args)}")
         self.log("=" * 60)
@@ -435,19 +482,29 @@ class LlamaServerManager(QProcess):
         self.log("🛑 Sending server stop request...")
 
         # 1. Önce HTTP API üzerinden nazikçe kapatmayı dene (llama-server /exit endpoint)
-        try:
-            import requests
-            url = f"http://{self.host}:{self.port}/exit"
-            self.log(f"📤 Sending HTTP API shutdown request: {url}")
-            response = requests.post(url, timeout=2)
-            self.log(f"✓ HTTP API shutdown request sent (Response: {response.status_code})")
-        except ImportError:
-            self.log("⚠ requests library not installed, skipping HTTP API shutdown.")
-        except Exception as e:
-            self.log(f"⚠ HTTP API shutdown failed: {e}")
+        # requests.post çağrısı arka plan daemon thread'inde çalışır; sunucu yanıt vermese
+        # bile ana GUI thread'i ağ zaman aşımı nedeniyle bloke olmaz.
+        url = f"http://{self.host}:{self.port}/exit"
+        self.log(f"📤 Sending HTTP API shutdown request: {url}")
 
-        # 2. Süreç grubunu temizle (terminate + wait)
-        self.cleanup_server_process()
+        def _do_http_exit():
+            try:
+                import requests
+                requests.post(url, timeout=1.0)
+            except Exception:
+                pass
+
+        exit_thread = threading.Thread(target=_do_http_exit, daemon=True)
+        exit_thread.start()
+
+        # Sunucunun HTTP API üzerinden nazikçe kapanmasını bekle (QProcess)
+        # Yanıt verilip süreç kapandıysa waitForFinished True döner ve SIGTERM gerekmez.
+        if self.waitForFinished(1000):
+            self.log("✓ Server exited gracefully via HTTP API.")
+            self.server_running = False
+        else:
+            # 2. HTTP ile kapanmadıysa süreç grubunu temizle (SIGTERM -> SIGKILL)
+            self.cleanup_server_process()
 
         # 3. Son kontrol: port hala açık mı? (arka plan thread ile - UI bloke olmaz)
         if is_port_in_use(self.port):
