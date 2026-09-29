@@ -214,7 +214,7 @@ Router mode additionally provides:
 | Auto-load Models | Automatically load router models when required | Disabled |
 | Jinja | Enable Jinja chat templates | Enabled |
 
-**Profiles** support both Single Model and Router configurations. Named profiles are stored in `~/.llamatray/profiles.json`; application settings are stored in `~/.llamatray/config.json`.
+**Profiles** support both Single Model and Router configurations. Named profiles are stored in `~/.llamatray/profiles.json`; application settings are stored in `~/.llamatray/config.json` (both saved atomically to prevent corruption). Application logs are persisted to `~/.local/state/llamatray/llamatray.log` with automatic rotation.
 
 ### 🧩 Dependencies
 
@@ -446,7 +446,7 @@ Router modu ayrıca şu ayarları sunar:
 | Modelleri Otomatik Yükle | Gerektiğinde router modellerini otomatik yükler | Kapalı |
 | Jinja | Jinja sohbet şablonlarını etkinleştirir | Açık |
 
-**Profiller** hem Tek Model hem de Router yapılandırmalarını destekler. İsimli profiller `~/.llamatray/profiles.json`, uygulama ayarları ise `~/.llamatray/config.json` dosyasında saklanır.
+**Profiller** hem Tek Model hem de Router yapılandırmalarını destekler. İsimli profiller `~/.llamatray/profiles.json`, uygulama ayarları ise `~/.llamatray/config.json` dosyasında saklanır (veri bozulmalarını önlemek için atomik olarak yazılır). Uygulama günlükleri ise `~/.local/state/llamatray/llamatray.log` dosyasında otomatik rotasyonla saklanır.
 
 ### 🧩 Bağımlılıklar
 

@@ -18,6 +18,9 @@ class SystemMonitor:
         self.vram_available = False
         self.gpu_method = None
         self._nvml_initialized = False
+        self._gpu_busy_path = None
+        self._vram_used_path = None
+        self._vram_total_path = None
         self._init_gpu()
 
     def _init_gpu(self):
@@ -80,30 +83,25 @@ class SystemMonitor:
                         amd_card = device
                         break
 
-            if amd_card:
-                # gpu_busy_percent dosyasını kontrol et
-                gpu_busy_path = os.path.join(drm_path, amd_card, "device", "gpu_busy_percent")
+            cards_to_check = [amd_card] if amd_card else []
+            for device in os.listdir(drm_path):
+                if device.startswith("card") and device not in cards_to_check:
+                    cards_to_check.append(device)
+
+            for card in cards_to_check:
+                gpu_busy_path = os.path.join(drm_path, card, "device", "gpu_busy_percent")
                 if os.path.exists(gpu_busy_path):
                     self.gpu_available = True
                     self.gpu_method = "amdgpu_sysfs"
-                    # VRAM bilgisi için mem_info_vram_used dosyasını kontrol et
-                    vram_used_path = os.path.join(drm_path, amd_card, "device", "mem_info_vram_used")
-                    if os.path.exists(vram_used_path):
-                        self.vram_available = True
-                    return
+                    self._gpu_busy_path = gpu_busy_path
 
-                # Diğer card numaralarını dene
-                for device in os.listdir(drm_path):
-                    if device.startswith("card") and device != amd_card:
-                        gpu_busy_path = os.path.join(drm_path, device, "device", "gpu_busy_percent")
-                        if os.path.exists(gpu_busy_path):
-                            self.gpu_available = True
-                            self.gpu_method = "amdgpu_sysfs"
-                            # VRAM bilgisi için mem_info_vram_used dosyasını kontrol et
-                            vram_used_path = os.path.join(drm_path, device, "device", "mem_info_vram_used")
-                            if os.path.exists(vram_used_path):
-                                self.vram_available = True
-                            return
+                    vram_used = os.path.join(drm_path, card, "device", "mem_info_vram_used")
+                    vram_total = os.path.join(drm_path, card, "device", "mem_info_vram_total")
+                    if os.path.exists(vram_used) and os.path.exists(vram_total):
+                        self.vram_available = True
+                        self._vram_used_path = vram_used
+                        self._vram_total_path = vram_total
+                    return
 
         # 4. subprocess ile nvidia-smi dene
         try:
@@ -208,22 +206,16 @@ class SystemMonitor:
                 pass
 
         elif self.gpu_method == "amdgpu_sysfs":
-            # 1. gpu_busy_percent dosyasını oku
-            try:
-                drm_path = "/sys/class/drm"
-                for device in os.listdir(drm_path):
-                    if device.startswith("card"):
-                        gpu_busy_path = os.path.join(drm_path, device, "device", "gpu_busy_percent")
-                        if os.path.exists(gpu_busy_path):
-                            with open(gpu_busy_path, 'r') as f:
-                                value = int(f.read().strip())
-                                if 0 <= value <= 100:
-                                    return value
-            except Exception as e:
-                print(f"⚠ GPU usage retrieval failed (amdgpu_sysfs): {e}")
-                pass
-
-        return 0
+            # gpu_busy_percent dosyasını oku (önbelleğe alınmış yoldan)
+            if self._gpu_busy_path and os.path.exists(self._gpu_busy_path):
+                try:
+                    with open(self._gpu_busy_path, 'r') as f:
+                        value = int(f.read().strip())
+                        if 0 <= value <= 100:
+                            return value
+                except Exception as e:
+                    print(f"⚠ GPU usage retrieval failed (amdgpu_sysfs): {e}")
+            return 0
 
     def get_vram_usage(self):
         """VRAM kullanım yüzdesini al"""
@@ -288,25 +280,21 @@ class SystemMonitor:
                 return (0, 0)
 
         elif self.gpu_method == "amdgpu_sysfs":
-            try:
-                drm_path = "/sys/class/drm"
-                for device in os.listdir(drm_path):
-                    if device.startswith("card"):
-                        vram_used_path = os.path.join(drm_path, device, "device", "mem_info_vram_used")
-                        vram_total_path = os.path.join(drm_path, device, "device", "mem_info_vram_total")
-                        used = 0
-                        total = 0
-                        if os.path.exists(vram_used_path):
-                            with open(vram_used_path, 'r') as f:
-                                used = int(f.read().strip())
-                        if os.path.exists(vram_total_path):
-                            with open(vram_total_path, 'r') as f:
-                                total = int(f.read().strip())
-                        if total > 0:
-                            return (used / (1024**3), total / (1024**3))
-            except Exception as e:
-                print(f"⚠ VRAM info retrieval failed (amdgpu_sysfs): {e}")
-                return (0, 0)
+            if self._vram_used_path and self._vram_total_path:
+                try:
+                    used = 0
+                    total = 0
+                    if os.path.exists(self._vram_used_path):
+                        with open(self._vram_used_path, 'r') as f:
+                            used = int(f.read().strip())
+                    if os.path.exists(self._vram_total_path):
+                        with open(self._vram_total_path, 'r') as f:
+                            total = int(f.read().strip())
+                    if total > 0:
+                        return (used / (1024**3), total / (1024**3))
+                except Exception as e:
+                    print(f"⚠ VRAM info retrieval failed (amdgpu_sysfs): {e}")
+            return (0, 0)
 
         return (0, 0)
 
