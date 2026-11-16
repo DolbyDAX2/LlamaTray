@@ -41,3 +41,8 @@ release-notes*.md
 
 # Config fix note - development artifact
 ui_config_fix.txt
+
+# Local planning and documentation notes
+docs/ROADMAP.md
+docs/IDEAS.md
+docs/DECISIONS.md

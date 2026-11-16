@@ -1,5 +1,5 @@
 """
-LlamaTray v1.5.5 Core Logic Unit Tests.
+LlamaTray v1.6.0 Core Logic Unit Tests.
 Saf mantık, argüman üretimi, veri güvenliği ve doğrulama testleri.
 """
 
