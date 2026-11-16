@@ -87,6 +87,41 @@ class TestServerArgs(unittest.TestCase):
         self.assertIn("-ngl", args)
         self.assertIn("99", args)
 
+    def test_router_mode_preset_and_max_models(self):
+        args = build_server_args(
+            router_mode=True,
+            models_preset="/models/models.ini",
+            models_max=2,
+            port=9000,
+            extra_params="-md /models/draft.gguf --temp 0.8"
+        )
+        self.assertIn("--models-preset", args)
+        self.assertIn("/models/models.ini", args)
+        self.assertIn("--models-max", args)
+        self.assertIn("2", args)
+        # models.ini aktifken CLI'da gereksiz ngl, ctx-size ve tekil mod ek parametreleri olmamalıdır
+        self.assertNotIn("-ngl", args)
+        self.assertNotIn("--ctx-size", args)
+        self.assertNotIn("-md", args)
+        self.assertNotIn("--temp", args)
+
+    def test_router_mode_both_dir_and_preset(self):
+        args = build_server_args(
+            router_mode=True,
+            models_dir="/models/all",
+            models_preset="/models/models.ini",
+            models_max="3",
+            port=9000
+        )
+        self.assertIn("--models-dir", args)
+        self.assertIn("/models/all", args)
+        self.assertIn("--models-preset", args)
+        self.assertIn("/models/models.ini", args)
+        self.assertIn("--models-max", args)
+        self.assertIn("3", args)
+        self.assertNotIn("-ngl", args)
+        self.assertNotIn("--ctx-size", args)
+
     def test_mmproj_parameter(self):
         args = build_server_args(
             model_path="/models/vision.gguf",
@@ -128,6 +163,12 @@ class TestServerArgs(unittest.TestCase):
     def test_missing_models_dir_in_router(self):
         with self.assertRaises(ValueError):
             build_server_args(models_dir="", router_mode=True)
+        with self.assertRaises(ValueError):
+            build_server_args(models_dir="", models_preset="", router_mode=True)
+
+    def test_invalid_models_max(self):
+        with self.assertRaises(ValueError):
+            build_server_args(router_mode=True, models_preset="/models/models.ini", models_max="not_a_number")
 
 
 class TestLoggingAndShutdown(unittest.TestCase):
@@ -144,6 +185,67 @@ class TestLoggingAndShutdown(unittest.TestCase):
         # Sunucu kapalıyken stop_server çağrısının güvenli ve hızlı sonlandığını doğrula
         manager.stop_server()
         self.assertFalse(manager.is_running())
+
+
+class TestModelsIniGenerator(unittest.TestCase):
+    """models.ini üretimi ve alias temizleme testleri."""
+
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp(prefix="llamatray_ini_test_")
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+
+    def test_clean_alias(self):
+        from LlamaTray.components.models_ini_editor import clean_alias_from_filename
+        self.assertEqual(clean_alias_from_filename("Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf"), "qwen2.5-coder-7b")
+        self.assertEqual(clean_alias_from_filename("Llama-3.2-3B-Instruct-Q8_0.gguf"), "llama-3.2-3b")
+        self.assertEqual(clean_alias_from_filename("model.gguf"), "model")
+
+    def test_generate_default_ini(self):
+        from LlamaTray.components.models_ini_editor import generate_default_models_ini
+        m1 = os.path.join(self.test_dir, "llama-3-8b-Q4_K_M.gguf")
+        m2 = os.path.join(self.test_dir, "vision-model.gguf")
+        proj = os.path.join(self.test_dir, "vision-model.mmproj")
+        for p in (m1, m2, proj):
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("dummy")
+
+        ini_path = generate_default_models_ini(self.test_dir)
+        self.assertTrue(os.path.exists(ini_path))
+        with open(ini_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        self.assertIn("version = 1", content)
+        self.assertIn("[*]", content)
+        self.assertIn("[llama-3-8b]", content)
+        self.assertIn("[vision-model]", content)
+        self.assertIn("mmproj =", content)
+
+    def test_parse_ini_preserves_custom_keys(self):
+        from LlamaTray.components.models_ini_editor import parse_ini_content
+        sample = """version = 1
+
+# Global defaults
+[*]
+n-gpu-layers = 99
+ctx-size = 32768
+fa = on
+temp = 0.7
+
+[qwen]
+model = /path/to/qwen.gguf
+n-gpu-layers = 45
+ctx-size = 16384
+top_p = 0.95
+"""
+        parsed = parse_ini_content(sample)
+        self.assertEqual(parsed.get("__root__", {}).get("version"), "1")
+        self.assertEqual(parsed.get("*", {}).get("fa"), "on")
+        self.assertEqual(parsed.get("*", {}).get("temp"), "0.7")
+        self.assertEqual(parsed.get("*", {}).get("ctx-size"), "32768")
+        self.assertEqual(parsed.get("qwen", {}).get("top_p"), "0.95")
+        self.assertEqual(parsed.get("qwen", {}).get("n-gpu-layers"), "45")
 
 
 if __name__ == "__main__":

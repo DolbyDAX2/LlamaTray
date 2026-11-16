@@ -104,7 +104,8 @@ class AboutDialog(QDialog):
         version = VERSION_DISPLAY
         developer = self.get_translated("developer", "Geliştirici: Fatih Durdu")
         description = self.get_translated("description", "Linux (Arch Linux / CachyOS) sistemler için minimalist, hafif ve zombi süreç önleme mekanizmasına sahip PyQt6 tabanlı Llama.cpp (llama-server) yönetim aracı.")
-        website = self.get_translated("website", "Kişisel Web Sitesi")
+        app_website = self.get_translated("app_website", "LlamaTray Web Sitesi (llamatray.is-an.org)")
+        website = self.get_translated("website", "Geliştirici Web Sitesi (fatihdurdu.xyz)")
         github_profile = self.get_translated("github_profile", "GitHub Profili (DolbyDAX2)")
         gitea_repo = self.get_translated("gitea_repo", "Proje Gitea Deposu")
         
@@ -113,7 +114,8 @@ class AboutDialog(QDialog):
             f"<p><b>{developer}</b></p>"
             f"<p>{description}</p>"
             "<hr>"
-            f"<p>🌐 <a href='https://fatihdurdu.xyz/llamatray'>{website}</a></p>"
+            f"<p>🌐 <a href='https://llamatray.is-an.org/'>{app_website}</a></p>"
+            f"<p>👤 <a href='https://fatihdurdu.xyz'>{website}</a></p>"
             f"<p>🐙 <a href='https://github.com/DolbyDAX2'>{github_profile}</a></p>"
             f"<p>📦 <a href='https://gitea.fatihdurdu.xyz/dolbydax2/LlamaTray'>{gitea_repo}</a></p>"
         )

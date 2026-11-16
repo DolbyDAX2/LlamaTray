@@ -1,6 +1,6 @@
 # 🦙 LlamaTray
 
-[English](#english) | [Türkçe](#türkçe)
+[English](#english) | [Türkçe](#türkçe) | [🌐 Website](https://llamatray.is-an.org/)
 
 ---
 
@@ -210,7 +210,9 @@ Router mode additionally provides:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| Models Directory | Directory containing the GGUF models exposed by the router | (required) |
+| Models Directory | Directory containing the GGUF models exposed by the router | (required unless Preset File is set) |
+| Preset File (.ini) | Path to `models.ini` configuration file for per-model settings (`--models-preset`) | (optional) |
+| Max Loaded Models | Maximum number of simultaneously loaded models in memory (`--models-max`) | Default (4) |
 | Auto-load Models | Automatically load router models when required | Disabled |
 | Jinja | Enable Jinja chat templates | Enabled |
 
@@ -442,7 +444,9 @@ Router modu ayrıca şu ayarları sunar:
 
 | Ayar | Açıklama | Varsayılan |
 |------|----------|------------|
-| Model Klasörü | Router tarafından sunulacak GGUF modellerinin bulunduğu klasör | (zorunlu) |
+| Model Klasörü | Router tarafından sunulacak GGUF modellerinin bulunduğu klasör | (Preset Dosyası yoksa zorunlu) |
+| Preset Dosyası (.ini) | Model bazlı ayarlar için `models.ini` yapılandırma dosyası (`--models-preset`) | (isteğe bağlı) |
+| Maks. Yüklü Model | Aynı anda bellekte tutulabilecek maksimum model sayısı (`--models-max`) | Varsayılan (4) |
 | Modelleri Otomatik Yükle | Gerektiğinde router modellerini otomatik yükler | Kapalı |
 | Jinja | Jinja sohbet şablonlarını etkinleştirir | Açık |
 

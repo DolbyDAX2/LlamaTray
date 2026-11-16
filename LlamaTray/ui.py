@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QTextEdit, QVBoxLayout, QHBoxLayout, QComboBox, QWidget, QDialog,
     QMenu, QPushButton, QInputDialog, QDialogButtonBox, QTabWidget,
     QGroupBox, QRadioButton, QLineEdit, QScrollArea, QCheckBox,
-    QSizePolicy, QStyle
+    QSizePolicy, QStyle, QSpinBox
 )
 from PyQt6.QtGui import QIcon, QAction, QFontMetrics, QPainter, QPixmap, QImage, QDesktopServices
 from PyQt6.QtCore import QTimer, Qt, QSize, QUrl
@@ -415,7 +415,9 @@ class LlamaTray:
         self.router_settings = RouterSettingsWidget(
             translations_func=tr,
             port_func=lambda: self.advanced_settings.port_spinbox.value(),
-            log_func=self.log)
+            log_func=self.log,
+            is_server_running_func=lambda: self.server_manager.is_running(),
+            restart_server_func=self.restart_server)
         self.mode_group = QGroupBox()
         mode_layout = QHBoxLayout(self.mode_group)
         self.single_mode_radio = QRadioButton()
@@ -454,10 +456,18 @@ class LlamaTray:
         self.server_controls.open_web_ui_button.clicked.connect(lambda: self.server_controls.open_web_ui())
         self.single_mode_radio.toggled.connect(self.on_mode_changed)
         for widget in (self.router_settings.models_dir_lineedit,
+                       self.router_settings.models_preset_lineedit,
+                       self.router_settings.models_max_spinbox,
                        self.router_settings.no_autoload_checkbox,
                        self.router_settings.jinja_checkbox):
-            signal = widget.textChanged if isinstance(widget, QLineEdit) else widget.toggled
+            if isinstance(widget, QLineEdit):
+                signal = widget.textChanged
+            elif isinstance(widget, QSpinBox):
+                signal = widget.valueChanged
+            else:
+                signal = widget.toggled
             signal.connect(self.build_command_preview)
+        self.router_settings.preset_changed.connect(self._sync_preset_override)
         for w, sig in [(self.advanced_settings.gpu_layers_spinbox, 'valueChanged'),
                        (self.advanced_settings.context_size_combobox, 'currentTextChanged'),
                        (self.advanced_settings.port_spinbox, 'valueChanged'),
@@ -538,6 +548,7 @@ class LlamaTray:
         self.main_tab = QScrollArea()
         self.main_tab.setWidgetResizable(True)
         self.main_tab.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.main_tab.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         main_content = QWidget()
         main_layout = QVBoxLayout(main_content)
         for widget in (self.log_window, self.model_selector,
@@ -549,6 +560,7 @@ class LlamaTray:
         self.settings_tab = QScrollArea()
         self.settings_tab.setWidgetResizable(True)
         self.settings_tab.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.settings_tab.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         settings_content = QWidget()
         settings_layout = QVBoxLayout(settings_content)
         for widget in (self.mode_group, self.advanced_settings,
@@ -573,18 +585,18 @@ class LlamaTray:
         cw = QWidget(); cw.setLayout(self.layout); self.window.setCentralWidget(cw)
         self.window.setWindowTitle(f"{tr('app_name', '🦙 LlamaTray')} {VERSION_DISPLAY}")
         # Düşük çözünürlüklü ekranlarda (1024x768 vb.) pencere açılabilmesi için
-        # minimum boyut düşük tutulur; içerik QScrollArea içinde kayar.
-        self.window.setMinimumSize(480, 420)
+        # minimum boyut dengeli tutulur; içerik dikeyde kayar, yatay taşma engellenir.
+        self.window.setMinimumSize(500, 460)
         screen = QApplication.primaryScreen()
         if screen is not None:
             avail = screen.availableGeometry()
-            w = min(560, avail.width())
-            h = min(680, avail.height())
+            w = min(640, avail.width())
+            h = min(730, avail.height())
             x = avail.left() + max(0, (avail.width() - w) // 2)
             y = avail.top() + max(0, (avail.height() - h) // 3)
             self.window.setGeometry(x, y, w, h)
         else:
-            self.window.setGeometry(100, 100, 560, 680)
+            self.window.setGeometry(100, 100, 640, 730)
         # ProfileManager'a window referansını ver
         self.profile_manager.callbacks['window'] = self.window
 
@@ -656,7 +668,24 @@ class LlamaTray:
             self.router_settings.stop_polling()
         elif self.server_manager.is_running():
             self.router_settings.start_polling()
+        self._sync_preset_override()
         self.build_command_preview()
+
+    def _sync_preset_override(self, has_preset=None):
+        """Router modunda ve models.ini aktifken gelişmiş ayarları pasifleştirir."""
+        if not self.is_router_mode():
+            self.advanced_settings.set_preset_override_active(False)
+            return
+        if has_preset is None:
+            has_preset = bool(self.router_settings.models_preset_lineedit.text().strip())
+        self.advanced_settings.set_preset_override_active(has_preset)
+        self.build_command_preview()
+
+    def restart_server(self):
+        """Sunucuyu kapatıp kısa bir süre sonra yeniden başlatır."""
+        self.log(self.get_translated("log_server_restarting", "🔄 Sunucu yeniden başlatılıyor..."))
+        self.stop_server()
+        QTimer.singleShot(1200, self.start_server)
 
     def _on_router_server_started(self):
         if self.is_router_mode():
@@ -769,6 +798,8 @@ class LlamaTray:
                 "mmproj_path": self.advanced_settings.mmproj_lineedit.text().strip(),
                 "mode": "router" if self.is_router_mode() else "single",
                 "models_dir": self.router_settings.models_dir_lineedit.text().strip(),
+                "models_preset": self.router_settings.models_preset_lineedit.text().strip(),
+                "models_max": self.router_settings.models_max_spinbox.value(),
                 "no_models_autoload": not self.router_settings.no_autoload_checkbox.isChecked(),
                 "jinja": self.router_settings.jinja_checkbox.isChecked()}
 
@@ -778,6 +809,11 @@ class LlamaTray:
         else:
             self.single_mode_radio.setChecked(True)
         self.router_settings.models_dir_lineedit.setText(str(data.get("models_dir", "")))
+        self.router_settings.models_preset_lineedit.setText(str(data.get("models_preset", "")))
+        try:
+            self.router_settings.models_max_spinbox.setValue(int(data.get("models_max", 0)))
+        except (ValueError, TypeError):
+            pass
         self.router_settings.no_autoload_checkbox.setChecked(
             not data.get("no_models_autoload", True))
         self.router_settings.jinja_checkbox.setChecked(data.get("jinja", True))
@@ -826,6 +862,8 @@ class LlamaTray:
                       "mmproj_path": self.advanced_settings.mmproj_lineedit.text().strip(),
                       "mode": "router" if self.is_router_mode() else "single",
                       "models_dir": self.router_settings.models_dir_lineedit.text().strip(),
+                      "models_preset": self.router_settings.models_preset_lineedit.text().strip(),
+                      "models_max": self.router_settings.models_max_spinbox.value(),
                       "no_models_autoload": not self.router_settings.no_autoload_checkbox.isChecked(),
                       "jinja": self.router_settings.jinja_checkbox.isChecked(),
                       "minimize_to_tray_on_close": (self.minimize_to_tray_checkbox.isChecked()
@@ -849,6 +887,11 @@ class LlamaTray:
             else:
                 self.single_mode_radio.setChecked(True)
             self.router_settings.models_dir_lineedit.setText(str(config.get("models_dir", "")))
+            self.router_settings.models_preset_lineedit.setText(str(config.get("models_preset", "")))
+            try:
+                self.router_settings.models_max_spinbox.setValue(int(config.get("models_max", 0)))
+            except (ValueError, TypeError):
+                pass
             self.router_settings.no_autoload_checkbox.setChecked(
                 not config.get("no_models_autoload", True))
             self.router_settings.jinja_checkbox.setChecked(config.get("jinja", True))
@@ -890,6 +933,7 @@ class LlamaTray:
                 self.current_language = sl
                 self.log(self.get_translated("log_config_loaded", "✓ Yapılandırma yüklendi. Dil: {lang}").format(lang="Türkçe" if sl == "tr" else "English"))
             else: self.log("✓ Yapılandırma başarıyla yüklendi.")
+            self._sync_preset_override()
         except json.JSONDecodeError as e: self.log(f"❌ Hata: Geçersiz JSON - {e}")
         except PermissionError: self.log("❌ Hata: Dosya okunamadı - İzin reddedildi")
         except Exception as e: self.log(f"❌ Hata: {type(e).__name__}: {e}")

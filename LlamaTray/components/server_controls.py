@@ -51,12 +51,25 @@ class ServerControlsWidget(QWidget):
             mmproj_path = self.advanced_settings.mmproj_lineedit.text().strip()
             router_mode = self.router_mode_func()
             models_dir = ""
+            models_preset = ""
+            models_max = None
             no_models_autoload = True
             jinja = True
             if self.router_settings:
                 models_dir = self.router_settings.models_dir_lineedit.text().strip()
+                if hasattr(self.router_settings, 'models_preset_lineedit'):
+                    models_preset = self.router_settings.models_preset_lineedit.text().strip()
+                if hasattr(self.router_settings, 'models_max_spinbox'):
+                    val = self.router_settings.models_max_spinbox.value()
+                    models_max = val if val > 0 else None
                 no_models_autoload = not self.router_settings.no_autoload_checkbox.isChecked()
                 jinja = self.router_settings.jinja_checkbox.isChecked()
+                # models.ini preset aktifken llama-server modelleri ini dosyasından okur.
+                # models_dir parametresi de verilirse llama-server aynı modelleri klasörden de tarayıp duplicate üretir.
+                # Ayrıca tekli model modundaki ek parametreler router'a sızdırılmaz; tüm parametreler models.ini'den yönetilir.
+                if models_preset:
+                    models_dir = ""
+                    extra_params = ""
             self.start_server_button.setEnabled(False)
             self.stop_server_button.setEnabled(False)
             self.log("=" * 60)
@@ -66,6 +79,7 @@ class ServerControlsWidget(QWidget):
                 context_size=context_size, port=port,
                 extra_params=extra_params, mmproj_path=mmproj_path,
                 router_mode=router_mode, models_dir=models_dir,
+                models_preset=models_preset, models_max=models_max,
                 no_models_autoload=no_models_autoload, jinja=jinja
             )
             if success:

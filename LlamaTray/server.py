@@ -99,7 +99,8 @@ class CleanupThread(QThread):
 
 def build_server_args(model_path="", gpu_layers=99, context_size=8192, port=8080,
                       extra_params="", mmproj_path="", router_mode=False,
-                      models_dir="", no_models_autoload=True, jinja=True,
+                      models_dir="", models_preset="", models_max=None,
+                      no_models_autoload=True, jinja=True,
                       host="127.0.0.1"):
     """
     llama-server için komut satırı argüman listesini oluşturur ve parametreleri doğrular.
@@ -122,15 +123,31 @@ def build_server_args(model_path="", gpu_layers=99, context_size=8192, port=8080
         raise ValueError(f"Port is not a valid number: {port}") from exc
 
     if router_mode:
-        if not models_dir:
-            raise ValueError("Please select a models directory first.")
-        args = ["--models-dir", str(models_dir)]
+        clean_models_dir = str(models_dir).strip() if models_dir else ""
+        clean_models_preset = str(models_preset).strip() if models_preset else ""
+        if not clean_models_dir and not clean_models_preset:
+            raise ValueError("Please select a models directory or a models.ini preset file first.")
+
+        args = []
+        if clean_models_dir:
+            args.extend(["--models-dir", clean_models_dir])
+        if clean_models_preset:
+            args.extend(["--models-preset", clean_models_preset])
+        if models_max is not None and str(models_max).strip() != "":
+            try:
+                m_max = int(models_max)
+                if m_max > 0:
+                    args.extend(["--models-max", str(m_max)])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Max models must be a valid number: {models_max}") from exc
         if no_models_autoload:
             args.append("--no-models-autoload")
         if jinja:
             args.append("--jinja")
         args.extend(["--host", str(host), "--port", str(port)])
-        args.extend(["-ngl", str(gpu_layers), "--ctx-size", str(context_size)])
+        # models.ini aktif değilse global ngl ve ctx-size eklenir (ini kendi içinde yönetir)
+        if not clean_models_preset:
+            args.extend(["-ngl", str(gpu_layers), "--ctx-size", str(context_size)])
     else:
         if not model_path:
             raise ValueError("Please select a model file first.")
@@ -145,13 +162,16 @@ def build_server_args(model_path="", gpu_layers=99, context_size=8192, port=8080
                 args.extend(["--mmproj", clean_mmproj])
 
     if extra_params:
-        clean_extra = str(extra_params).strip()
-        if clean_extra:
-            try:
-                extra_args = shlex.split(clean_extra)
-                args.extend(extra_args)
-            except ValueError as e:
-                raise ValueError(f"Could not parse extra parameters: {e}. E.g.: -t 8 --flash-attn") from e
+        # models.ini aktifken tekil model ek parametreleri router'a eklenmez (ini kendi içinde yönetir)
+        clean_preset = str(models_preset).strip() if (router_mode and models_preset) else ""
+        if not clean_preset:
+            clean_extra = str(extra_params).strip()
+            if clean_extra:
+                try:
+                    extra_args = shlex.split(clean_extra)
+                    args.extend(extra_args)
+                except ValueError as e:
+                    raise ValueError(f"Could not parse extra parameters: {e}. E.g.: -t 8 --flash-attn") from e
 
     return args
 
@@ -270,7 +290,8 @@ class LlamaServerManager(QProcess):
 
     def start_server(self, model_path="", gpu_layers=99, context_size=8192, port=8080,
                      extra_params="", mmproj_path="", router_mode=False,
-                     models_dir="", no_models_autoload=True, jinja=True):
+                     models_dir="", models_preset="", models_max=None,
+                     no_models_autoload=True, jinja=True):
         """
         Llama-server'ı başlat
 
@@ -283,6 +304,8 @@ class LlamaServerManager(QProcess):
             mmproj_path: mmproj proje dosyasının yolu (opsiyonel)
             router_mode: Model router modunu etkinleştirir
             models_dir: Router modunda GGUF modellerinin bulunduğu klasör
+            models_preset: Router modunda models.ini preset dosyasının yolu
+            models_max: Router modunda aynı anda yüklü olabilecek maksimum model sayısı
             no_models_autoload: Başlangıçta modellerin otomatik yüklenmesini engeller
             jinja: Jinja sohbet şablonlarını etkinleştirir
         """
@@ -292,11 +315,16 @@ class LlamaServerManager(QProcess):
             return False
 
         if router_mode:
-            if not models_dir:
-                self.log("❌ Error: Please select a models directory first.")
+            clean_models_dir = str(models_dir).strip() if models_dir else ""
+            clean_models_preset = str(models_preset).strip() if models_preset else ""
+            if not clean_models_dir and not clean_models_preset:
+                self.log("❌ Error: Please select a models directory or a models.ini preset file first.")
                 return False
-            if not os.path.isdir(models_dir):
-                self.log(f"❌ Error: Models directory not found: {models_dir}")
+            if clean_models_dir and not os.path.isdir(clean_models_dir):
+                self.log(f"❌ Error: Models directory not found: {clean_models_dir}")
+                return False
+            if clean_models_preset and not os.path.exists(clean_models_preset):
+                self.log(f"❌ Error: Models preset file not found: {clean_models_preset}")
                 return False
         else:
             if not model_path:
@@ -322,6 +350,7 @@ class LlamaServerManager(QProcess):
                 context_size=context_size, port=port,
                 extra_params=extra_params, mmproj_path=mmproj_path,
                 router_mode=router_mode, models_dir=models_dir,
+                models_preset=models_preset, models_max=models_max,
                 no_models_autoload=no_models_autoload, jinja=jinja,
                 host=self.host
             )
@@ -338,6 +367,7 @@ class LlamaServerManager(QProcess):
             'context_size': context_size, 'port': port,
             'extra_params': extra_params, 'mmproj_path': mmproj_path,
             'router_mode': router_mode, 'models_dir': models_dir,
+            'models_preset': models_preset, 'models_max': models_max,
             'no_models_autoload': no_models_autoload, 'jinja': jinja,
         }
 
@@ -413,6 +443,8 @@ class LlamaServerManager(QProcess):
                 context_size=context_size, port=port,
                 extra_params=extra_params, mmproj_path=mmproj_path,
                 router_mode=router_mode, models_dir=p['models_dir'],
+                models_preset=p.get('models_preset', ''),
+                models_max=p.get('models_max', None),
                 no_models_autoload=p['no_models_autoload'], jinja=p['jinja'],
                 host=self.host
             )

@@ -3,10 +3,11 @@
 import os
 
 import requests
-from PyQt6.QtCore import QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QThread, QTimer, pyqtSignal, QUrl
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QCheckBox, QFileDialog, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
-    QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+    QLineEdit, QMessageBox, QPushButton, QSpinBox, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
 
@@ -64,11 +65,16 @@ class RouterApiWorker(QThread):
 class RouterSettingsWidget(QGroupBox):
     """Router seçeneklerini ve /models sonucunu gösterir."""
 
-    def __init__(self, translations_func, port_func, log_func=None):
+    preset_changed = pyqtSignal(bool)
+
+    def __init__(self, translations_func, port_func, log_func=None,
+                 is_server_running_func=None, restart_server_func=None):
         super().__init__()
         self.translations_func = translations_func
         self.port_func = port_func
         self.log = log_func or (lambda _message: None)
+        self.is_server_running_func = is_server_running_func or (lambda: False)
+        self.restart_server_func = restart_server_func
         self._workers = set()
         self._server_active = False
         self._build_ui()
@@ -92,14 +98,55 @@ class RouterSettingsWidget(QGroupBox):
         directory_row.addWidget(self.models_dir_browse_button)
         layout.addLayout(directory_row)
 
-        # Checkbox kullanıcı açısından pozitif anlam taşır. İşaretli olduğunda
-        # modeller otomatik yüklenir ve --no-models-autoload eklenmez.
+        # Satır 1: Preset Dosyası Yolu ve Seçim Butonu
+        preset_path_row = QHBoxLayout()
+        self.models_preset_label = QLabel()
+        self.models_preset_lineedit = QLineEdit()
+        self.models_preset_lineedit.textChanged.connect(self._on_preset_path_changed)
+        self.models_preset_browse_button = QPushButton("📄")
+        self.models_preset_browse_button.setFixedWidth(32)
+        self.models_preset_browse_button.clicked.connect(self.browse_models_preset)
+
+        preset_path_row.addWidget(self.models_preset_label)
+        preset_path_row.addWidget(self.models_preset_lineedit, 1)
+        preset_path_row.addWidget(self.models_preset_browse_button)
+        layout.addLayout(preset_path_row)
+
+        # Satır 2: Preset İşlem Butonları (Oluştur / Düzenle)
+        preset_actions_row = QHBoxLayout()
+        self.generate_preset_button = QPushButton()
+        self.generate_preset_button.clicked.connect(self.generate_preset_file)
+
+        self.edit_preset_button = QPushButton()
+        self.edit_preset_button.setEnabled(False)
+        self.edit_preset_button.clicked.connect(self.open_preset_editor)
+
+        preset_actions_row.addWidget(self.generate_preset_button)
+        preset_actions_row.addWidget(self.edit_preset_button)
+        preset_actions_row.addStretch()
+        layout.addLayout(preset_actions_row)
+
+        # Seçenekler (Autoload ve Jinja)
+        options_row = QHBoxLayout()
         self.no_autoload_checkbox = QCheckBox()
         self.no_autoload_checkbox.setChecked(False)
         self.jinja_checkbox = QCheckBox()
         self.jinja_checkbox.setChecked(True)
-        layout.addWidget(self.no_autoload_checkbox)
-        layout.addWidget(self.jinja_checkbox)
+        options_row.addWidget(self.no_autoload_checkbox)
+        options_row.addWidget(self.jinja_checkbox)
+        options_row.addStretch()
+        layout.addLayout(options_row)
+
+        # --models-max kontrolü
+        max_row = QHBoxLayout()
+        self.models_max_label = QLabel()
+        self.models_max_spinbox = QSpinBox()
+        self.models_max_spinbox.setRange(0, 128)
+        self.models_max_spinbox.setValue(0)  # 0: llama-server varsayılanı (4)
+        max_row.addWidget(self.models_max_label)
+        max_row.addWidget(self.models_max_spinbox)
+        max_row.addStretch()
+        layout.addLayout(max_row)
 
         title_row = QHBoxLayout()
         self.active_models_label = QLabel()
@@ -143,6 +190,86 @@ class RouterSettingsWidget(QGroupBox):
             self.models_dir_lineedit.text() or os.path.expanduser("~"))
         if path:
             self.models_dir_lineedit.setText(path)
+
+    def browse_models_preset(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, self.tr("router_select_models_preset", "models.ini Preset Dosyasını Seç"),
+            self.models_preset_lineedit.text() or os.path.expanduser("~"),
+            "INI Files (*.ini);;All Files (*)")
+        if path:
+            self.models_preset_lineedit.setText(path)
+
+    def _on_preset_path_changed(self, text):
+        path = text.strip()
+        has_preset = bool(path and os.path.exists(path))
+        self.edit_preset_button.setEnabled(has_preset)
+        self.preset_changed.emit(bool(path))
+
+    def generate_preset_file(self):
+        """Model klasöründeki modellerden otomatik models.ini üretir."""
+        models_dir = self.models_dir_lineedit.text().strip()
+        if not models_dir:
+            QMessageBox.warning(
+                self, self.tr("hf_warning_title", "Uyarı"),
+                self.tr("router_warn_select_dir_first", "Lütfen önce model dosyalarının bulunduğu klasörü seçin."))
+            return
+        if not os.path.isdir(models_dir):
+            QMessageBox.warning(
+                self, self.tr("hf_warning_title", "Uyarı"),
+                self.tr("router_warn_dir_not_found", "Seçilen model klasörü bulunamadı: {dir}").format(dir=models_dir))
+            return
+        try:
+            from .models_ini_editor import generate_default_models_ini
+            ini_path = generate_default_models_ini(models_dir)
+            self.models_preset_lineedit.setText(ini_path)
+            self.edit_preset_button.setEnabled(True)
+            QMessageBox.information(
+                self, self.tr("hf_success_title", "Başarılı"),
+                self.tr("router_preset_generated", "models.ini dosyası başarıyla oluşturuldu:\n{path}").format(path=ini_path))
+        except Exception as e:
+            QMessageBox.critical(
+                self, self.tr("hf_error_title", "Hata"),
+                self.tr("router_preset_gen_error", "models.ini oluşturulamadı: {error}").format(error=e))
+
+    def open_preset_editor(self):
+        """models.ini düzenleyici dialogunu açar."""
+        ini_path = self.models_preset_lineedit.text().strip()
+        if not ini_path or not os.path.exists(ini_path):
+            models_dir = self.models_dir_lineedit.text().strip()
+            if models_dir and os.path.isdir(models_dir):
+                candidate = os.path.join(models_dir, "models.ini")
+                if not os.path.exists(candidate):
+                    reply = QMessageBox.question(
+                        self, self.tr("router_generate_confirm_title", "models.ini Oluşturulsun mu?"),
+                        self.tr("router_generate_confirm_prompt", "Henüz bir models.ini dosyası yok. Klasördeki modellerden otomatik oluşturulsun mu?"),
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    if reply == QMessageBox.StandardButton.Yes:
+                        self.generate_preset_file()
+                        ini_path = self.models_preset_lineedit.text().strip()
+                        if not ini_path:
+                            return
+                    else:
+                        return
+                else:
+                    ini_path = candidate
+                    self.models_preset_lineedit.setText(ini_path)
+            else:
+                QMessageBox.warning(
+                    self, self.tr("hf_warning_title", "Uyarı"),
+                    self.tr("router_warn_select_preset_first", "Lütfen önce geçerli bir models.ini dosyası seçin veya oluşturun."))
+                return
+
+        from .models_ini_editor import ModelsIniEditorDialog
+        dialog = ModelsIniEditorDialog(
+            ini_path=ini_path,
+            translations_func=self.translations_func,
+            is_server_running_func=self.is_server_running_func,
+            restart_server_func=self.restart_server_func,
+            parent=self
+        )
+        dialog.ini_saved.connect(lambda path: self.models_preset_lineedit.setText(path))
+        dialog.exec()
 
     def start_polling(self):
         self._server_active = True
@@ -250,9 +377,19 @@ class RouterSettingsWidget(QGroupBox):
         self.models_dir_label.setText(self.tr("router_models_dir", "Model Klasörü:"))
         self.models_dir_lineedit.setPlaceholderText(
             self.tr("router_models_dir_placeholder", "Örn: /home/kullanici/modeller"))
+        self.models_preset_label.setText(self.tr("router_models_preset", "Preset Dosyası (.ini):"))
+        self.models_preset_lineedit.setPlaceholderText(
+            self.tr("router_models_preset_placeholder", "Örn: /home/kullanici/modeller/models.ini (Opsiyonel)"))
+        if hasattr(self, 'generate_preset_button'):
+            self.generate_preset_button.setText(self.tr("router_btn_generate_preset", "🪄 Oluştur"))
+        if hasattr(self, 'edit_preset_button'):
+            self.edit_preset_button.setText(self.tr("router_btn_edit_preset", "✏️ Düzenle"))
         self.no_autoload_checkbox.setText(
             self.tr("router_no_autoload", "Modelleri otomatik yükle"))
         self.jinja_checkbox.setText(self.tr("router_jinja", "Jinja şablonlarını etkinleştir"))
+        self.models_max_label.setText(self.tr("router_models_max", "Maks. Yüklü Model:"))
+        self.models_max_spinbox.setSpecialValueText(self.tr("router_models_max_default", "Varsayılan (4)"))
+        self.models_max_spinbox.setToolTip(self.tr("router_models_max_tooltip", "Aynı anda bellekte tutulabilecek maksimum model sayısı (LRU tahliyesi)"))
         self.active_models_label.setText(self.tr("router_active_models", "Aktif Modeller"))
         self.refresh_button.setText(self.tr("router_refresh", "Yenile"))
         self.models_tree.setHeaderLabels([

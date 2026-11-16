@@ -13,6 +13,7 @@ from .model_selector import ModelSelectorWidget
 from .hf_downloader import HfDownloaderDialog
 from .router_settings import RouterSettingsWidget
 from .llamacpp_manager import LlamaCppManagerDialog
+from .models_ini_editor import ModelsIniEditorDialog, generate_default_models_ini
 
 __all__ = [
     "SystemMonitorWidget",
@@ -25,4 +26,6 @@ __all__ = [
     "HfDownloaderDialog",
     "RouterSettingsWidget",
     "LlamaCppManagerDialog",
+    "ModelsIniEditorDialog",
+    "generate_default_models_ini",
 ]

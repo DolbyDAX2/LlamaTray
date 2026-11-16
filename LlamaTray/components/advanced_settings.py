@@ -134,8 +134,16 @@ class AdvancedSettingsWidget(QGroupBox):
         self._mmproj_widgets = (
             self.mmproj_label, self.mmproj_lineedit, self.mmproj_browse_button)
         self._single_model_mode = True
+
+        # models.ini devredeyken çıkan bilgilendirme etiketi
+        self.preset_override_banner = QLabel(
+            self.get_translated("advanced_preset_override_info", "ℹ️ Model parametreleri models.ini dosyasından yönetilmektedir."))
+        self.preset_override_banner.setStyleSheet("font-style: italic; color: #1976D2; padding: 4px; border: 1px dashed #1976D2; border-radius: 4px; margin-top: 4px;")
+        self.preset_override_banner.setWordWrap(True)
+        self.preset_override_banner.setVisible(False)
         
         # Layout'a ekle
+        layout.addWidget(self.preset_override_banner)
         layout.addLayout(gpu_row)
         layout.addLayout(context_row)
         layout.addLayout(port_row)
@@ -269,6 +277,14 @@ class AdvancedSettingsWidget(QGroupBox):
             'mmproj_browse_button': self.mmproj_browse_button,
         }
     
+    def set_preset_override_active(self, active: bool):
+        """models.ini devredeyken global ayarları ve ek parametreleri pasife alır."""
+        self.gpu_layers_spinbox.setEnabled(not active)
+        self.context_size_combobox.setEnabled(not active)
+        self.preset_combobox.setEnabled(not active)
+        self.extra_params_lineedit.setEnabled(not active)
+        self.preset_override_banner.setVisible(active)
+
     def update_labels(self):
         """Tüm label'ları güncelle (dil değişimi için)"""
         # GroupBox başlığı
@@ -316,3 +332,8 @@ class AdvancedSettingsWidget(QGroupBox):
         # mmproj Dosyası label
         self.mmproj_label.setText(self.get_translated("label_mmproj", "mmproj Dosyası:"))
         self.mmproj_lineedit.setPlaceholderText(self.get_translated("placeholder_mmproj", "Örn: /home/kullanici/model.gguf"))
+        
+        # models.ini override banner
+        if hasattr(self, 'preset_override_banner'):
+            self.preset_override_banner.setText(
+                self.get_translated("advanced_preset_override_info", "ℹ️ Model parametreleri models.ini dosyasından yönetilmektedir."))

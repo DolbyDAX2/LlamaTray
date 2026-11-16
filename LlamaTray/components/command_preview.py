@@ -63,19 +63,35 @@ class CommandPreviewWidget(QGroupBox):
             port = advanced_settings.port_spinbox.value()
 
             if router_mode and router_settings:
+                models_preset = ""
+                if hasattr(router_settings, 'models_preset_lineedit'):
+                    models_preset = router_settings.models_preset_lineedit.text().strip()
                 models_dir = router_settings.models_dir_lineedit.text().strip()
-                if models_dir:
+
+                if models_preset:
+                    parts.extend(["--models-preset", models_preset])
+                elif models_dir:
                     parts.extend(["--models-dir", models_dir])
+                if hasattr(router_settings, 'models_max_spinbox'):
+                    models_max = router_settings.models_max_spinbox.value()
+                    if models_max > 0:
+                        parts.extend(["--models-max", str(models_max)])
                 if not router_settings.no_autoload_checkbox.isChecked():
                     parts.append("--no-models-autoload")
                 if router_settings.jinja_checkbox.isChecked():
                     parts.append("--jinja")
                 parts.extend(["--host", "127.0.0.1", "--port", str(port)])
-                try:
-                    context_size = int(advanced_settings.context_size_combobox.currentText())
-                except (ValueError, TypeError):
-                    context_size = 32768
-                parts.extend(["-ngl", str(gpu_layers), "--ctx-size", str(context_size)])
+                # models.ini yoksa global ngl, ctx-size ve ek parametreleri ekle
+                has_preset = hasattr(router_settings, 'models_preset_lineedit') and bool(router_settings.models_preset_lineedit.text().strip())
+                if not has_preset:
+                    try:
+                        context_size = int(advanced_settings.context_size_combobox.currentText())
+                    except (ValueError, TypeError):
+                        context_size = 32768
+                    parts.extend(["-ngl", str(gpu_layers), "--ctx-size", str(context_size)])
+                    extra_params = advanced_settings.extra_params_lineedit.text().strip()
+                    if extra_params:
+                        parts.append(extra_params)
             else:
                 if model_path:
                     parts.extend(["-m", model_path])
@@ -89,9 +105,9 @@ class CommandPreviewWidget(QGroupBox):
                 if mmproj_path:
                     parts.extend(["--mmproj", mmproj_path])
 
-            extra_params = advanced_settings.extra_params_lineedit.text().strip()
-            if extra_params:
-                parts.append(extra_params)
+                extra_params = advanced_settings.extra_params_lineedit.text().strip()
+                if extra_params:
+                    parts.append(extra_params)
 
         self.command_text.setPlainText(" ".join(parts))
 
